@@ -155,7 +155,7 @@ exercises the SDK-independent core with synthetic inputs and skips this integrat
 
 | Question      | Type   | Meaning                                             |
 |---------------|--------|-----------------------------------------------------|
-| `category`    | Choice | install-setup / desktop-config / shell-cli / apps-integrations / hardware-drivers / update-release / agents-ai / docs / fix-misc / unclear |
+| `category`    | Choice | install-setup / desktop-config / user-experience / shell-cli / apps-integrations / hardware-drivers / update-release / agents-ai / docs / fix-misc / unclear |
 | `risk`        | Score  | 0 text-only → 4 could break existing installs        |
 | `is_fix`      | Noul   | P(bug fix, not feature/taste change)                 |
 | `dupe_signal` | Noul   | P(title/body admits duplication or supersedence)     |

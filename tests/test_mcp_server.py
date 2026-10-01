@@ -118,6 +118,22 @@ class MCPTests(unittest.TestCase):
             with self.assertRaisesRegex(core.ReportError, "limit"):
                 core.Reports().surface()
 
+    def test_user_experience_category_is_derived_and_filterable(self):
+        self.reports()
+        records = [json.loads(line) for line in tranche.JUDGMENTS_PATH.read_text().splitlines()]
+        records[0]["answers"]["category"] = {"choice": "user-experience"}
+        tranche.JUDGMENTS_PATH.write_text("".join(json.dumps(r) + "\n" for r in records))
+        self.cluster()
+        (self.out / "batches.json").unlink()
+        server = self.core().Reports()
+        surface = server.surface()
+        self.assertEqual(surface["category_counts"],
+                         {"user-experience": 1, fixtures.answers()["category"]["choice"]: 1})
+        self.assertIn("user-experience", surface["filters"]["categories"])
+        result = server.query(category="user-experience")
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["items"][0]["number"], 1)
+
     def test_query_paginates_security_first_preserving_unknowns_and_provenance(self):
         self.reports()
         prs = tranche.load_prs()

@@ -82,6 +82,7 @@ merge_batches = [
 CAT_LABELS = {
     "security-review": "Security (meta)",
     "install-setup": "Install & Setup", "desktop-config": "Desktop Config",
+    "user-experience": "User Experience",
     "shell-cli": "Shell & CLI", "apps-integrations": "Apps & Integrations",
     "hardware-drivers": "Hardware & Drivers", "update-release": "Update & Release",
     "agents-ai": "Agents & AI", "docs": "Docs", "fix-misc": "Fixes & Misc",

@@ -97,6 +97,7 @@ def judge_questions() -> dict:
             "criteria": {
                 "install-setup": "omarchy-setup menu, installer, first boot, ISO, dotfiles bootstrap",
                 "desktop-config": "Hyprland, Walker, waybar, wlogout, mako, keybinds, wallpapers, theming",
+                "user-experience": "a default/taste or look-and-feel proposal (themes, wallpapers, icons, fonts, bar or menu aesthetics); judge by the change's effect, not the subsystem it edits",
                 "shell-cli": "zsh config, aliases, starship, CLI tool defaults, terminal usage",
                 "apps-integrations": "default apps, mime handling, new application integrations (e.g. dropbox, spotify, 1password)",
                 "hardware-drivers": "NVIDIA, wifi, bluetooth, audio, power, HiDPI, laptops, ARM/Snapdragon, firmware",

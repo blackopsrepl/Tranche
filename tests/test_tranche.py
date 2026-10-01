@@ -647,6 +647,20 @@ class WorkflowTests(unittest.TestCase):
             with self.assertRaises(tranche.TrancheFatal):
                 tranche.load_prs()
 
+    def test_user_experience_category_is_judge_selectable_and_labeled(self):
+        self.assertIn("user-experience", tranche.judge_questions()["category"]["criteria"])
+        prs = self.inputs([pr(1)])
+        self.judgments(prs, custom=dict(answers(), category={"choice": "user-experience"}))
+        self.assertEqual(
+            tranche.category(tranche.current_judgments(prs)[1]), "user-experience")
+        self.cluster()
+        result = self.render()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads((self.root / "docs" / "data" / "workbench.json").read_text())
+        self.assertEqual(payload["prs"][0]["category"], "user-experience")
+        self.assertEqual(payload["categories"]["user-experience"], "User Experience")
+        self.assertIn('value="user-experience"', (self.root / "docs" / "index.html").read_text())
+
     def test_html_render_matches_cli_coverage_and_escapes_source_text(self):
         prs = self.inputs([pr(1, title="Fix <script>alert(1)</script>"), pr(2)])
         self.judgments({1: prs[1]})
