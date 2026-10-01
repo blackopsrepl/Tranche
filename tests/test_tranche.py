@@ -192,6 +192,44 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("judged_at", record)
         self.assertEqual(len(tranche.current_judgments(tranche.load_prs())), 1)
 
+    def test_judgment_bound_to_previous_questions_is_never_reused(self):
+        prs = self.inputs([pr(1)])
+        old_questions = copy.deepcopy(tranche.judge_questions())
+        del old_questions["category"]["criteria"]["user-experience"]
+        stale = {"number": 1, "answers": copy.deepcopy(answers()), "usage": {},
+                 "binding": tranche.digest({"version": tranche.BINDING_VERSION,
+                                            "repo": tranche.REPO,
+                                            "source": prs[1]["evidence_digest"],
+                                            "state": tranche.pr_state(prs[1]),
+                                            "questions": old_questions,
+                                            "model": tranche.MODEL}),
+                 "input": tranche.pr_state(prs[1]), "requested_model": tranche.MODEL}
+        tranche.JUDGMENTS_PATH.write_text(json.dumps(stale) + "\n")
+        self.assertEqual(tranche.current_judgments(prs), {})
+        self.key.side_effect = None
+        self.key.return_value = "synthetic-key"
+        self.model.side_effect = None
+        self.model.return_value = {"answers": answers()}
+        tranche.cmd_judge(argparse.Namespace(resume=True, limit=None))
+        self.model.assert_called_once()
+        self.assertEqual(tranche.load_done()[1]["binding"], tranche.judgment_binding(prs[1]))
+
+    def test_pair_verdict_bound_to_previous_questions_is_never_reused(self):
+        prs = self.inputs([pr(1), pr(2)])
+        old_questions = copy.deepcopy(tranche.pair_questions())
+        old_questions["sameness"]["instructions"]["question"] += " (older wording)"
+        stale = {"a": 1, "b": 2, "verdict": "same_change",
+                 "probabilities": {"same_change": 0.9},
+                 "binding": tranche.digest({"version": tranche.BINDING_VERSION,
+                                            "repo": tranche.REPO, "model": tranche.MODEL,
+                                            "sources": [prs[1]["evidence_digest"], prs[2]["evidence_digest"]],
+                                            "state": [tranche.brief(prs[1]), tranche.brief(prs[2])],
+                                            "questions": old_questions}),
+                 "input": {"pr_a": tranche.brief(prs[1]), "pr_b": tranche.brief(prs[2])},
+                 "requested_model": tranche.MODEL}
+        tranche.PAIRS_PATH.write_text(json.dumps(stale) + "\n")
+        self.assertEqual(tranche.current_pairs(prs, self.judgments(prs)), [])
+
     def test_legacy_judgment_is_not_resume_hit(self):
         prs = self.inputs([pr(1)])
         self.judgments(prs, legacy=True)

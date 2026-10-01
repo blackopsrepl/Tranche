@@ -588,15 +588,14 @@ def judgment_is_current(pr, record) -> bool:
 
     The PR's own captured evidence and the model/question policy both bind a
     judgment, so a changed description or a newer model re-asks the question,
-    while a re-fetch of unchanged evidence does not. `state` is compared as the
-    projection stored with the record, so records written before evidence
-    digests existed verify exactly as they were judged. Completeness is not
+    while a re-fetch of unchanged evidence does not. The binding is the single
+    currency test: it digests the full question policy, so a judgment made
+    under an older question set is never presented as current. `input` and
+    `requested_model` stay on records as provenance only. Completeness is not
     tested here: an answer with an unknown field is still the answer that was
     given, and dropping it would turn a known category into an unknown one.
     """
-    return (record.get("binding") == judgment_binding(pr)
-            or (record.get("input") == pr_state(pr)
-                and record.get("requested_model") == MODEL))
+    return record.get("binding") == judgment_binding(pr)
 
 
 def reusable_judgment(record):
@@ -798,17 +797,14 @@ def current_verdicts(prs) -> dict[tuple[int, int], dict]:
 def pair_is_current(prs, pair, record) -> bool:
     """True when a stored verdict still answers today's question for today's evidence.
 
-    Same rule as `judgment_is_current`: the binding is authoritative when it
-    matches, otherwise the verdict is still reusable if the two descriptions it
-    was shown are byte-identical today and the model alias is unchanged. A pair
-    verdict compares descriptions, so a moved branch that leaves the text alone
-    does not invalidate it.
+    Same rule as `judgment_is_current`: the binding is the single currency test
+    and it digests the full question policy, so a verdict made under an older
+    question set is never presented as current. A moved branch that leaves the
+    two descriptions alone still matches the binding. `input` and
+    `requested_model` are provenance.
     """
     a, b = pair
-    if record.get("binding") == pair_binding(prs, a, b):
-        return True
-    return (record.get("input") == {"pr_a": brief(prs[a]), "pr_b": brief(prs[b])}
-            and record.get("requested_model") == MODEL)
+    return record.get("binding") == pair_binding(prs, a, b)
 
 
 def lexical_pairs(prs, judgments, refs=None, threshold=0.72,
