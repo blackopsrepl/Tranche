@@ -8,78 +8,100 @@ batches. Jev supplies the judgments; humans make the merge call.
 MIT licensed (see [LICENSE](LICENSE)); Tranche reads public repositories only and
 never includes credentials in its reports.
 
-Model-assisted discovery and review prioritization for the Omarchy PR backlog, built for the triage team DHH stood up
-on 2026-09-12 ([x.com/dhh/status/2098755120540393908](https://x.com/dhh/status/2098755120540393908)):
-
-> "We're 2,200 PRs deep on GH now and getting nearly a hundred new ones every day. I'll never
-> be able to catch up. Agents will help, but we need humans too. If you have DEEP Linux
-> experience, is agent-forward, and want to join the new Omarchy triage team, write
-> triage@omarchy.org."
->
-> "What we need in particular is people who can roll-up batches of fixes into clusters that I
-> can trust are fully reviewed … so I can merge whole tranches of fixes into core."
-> "Omarchy Triage can help consolidate PRs, remove dupes, and ensure that everything is ready
-> for consideration in a finished form."
-
 **Live report:** <https://vdistefano.studio/Tranche/>
 
-This tool uses [TypeSafe](https://docs.typesafe.ai)'s System One model **Jev**
-to suggest review candidates and related PR groups. Code owns the workflow;
-Jev supplies judgments about the descriptions it receives. This is a discovery
-and prioritization pass, not completed QA, verified duplicate detection or a
-security review. Maintainers decide what to merge or close.
+Tranche exists because the Omarchy PR backlog hit 2,800 open PRs growing by
+~100 a day. DHH stood up a human triage team on 2026-09-12
+([x.com/dhh/status/2098755120540393908](https://x.com/dhh/status/2098755120540393908))
+and asked for exactly three things: roll fixes into clusters that can be
+trusted, consolidate duplicates, and make sure everything reaches him in a
+finished form. Tranche is the tool side of that job. It uses
+[TypeSafe](https://docs.typesafe.ai)'s System One model **Jev** to judge PR
+descriptions, and it is built for the team DHH described — including his
+boundary from the follow-up reply: *"I'm not delegating the user experience."*
+Taste-level PRs get their own `user-experience` lane that the pipeline prepares
+but never pre-judges.
 
-## Setup
+## What Tranche actually does
+
+- **Fetches** the open PRs of `omacom/omarchy` into a local snapshot (via `gh`, already authenticated).
+- **Judges** each PR with one batched Jev call: what area it touches, how risky
+  it is, whether it's a fix, how finished it looks, how much review effort it
+  needs, whether it smells security-relevant, and whether it admits to
+  duplicating something.
+- **Finds likely duplicate groups** by comparing candidate pairs (title/body
+  similarity plus cross-references between PRs).
+- **Batches** confirmed groups into merge units of up to five PRs, security
+  batches first — each batch ships a ready-to-paste reviewer prompt.
+- **Publishes** everything: a browsable HTML workbench and a read-only MCP
+  server that AI agents can question directly.
+
+It is a discovery and prioritization pass. It never merges, never closes, and
+its "duplicates" are model suggestions, not verified facts. Maintainers decide
+what happens to a PR — always.
+
+## Quick start
+
+You need Python 3.10+ and the [`gh` CLI](https://cli.github.com) signed in.
+A Jev API key is only needed for the model stages (`judge`, `dupes`);
+fetching, clustering, rendering and tests run offline.
 
 ```bash
-# Needed only for judge/dupes; fetch, cluster and tests do not use a model key
-echo "apikey_..." > ~/Documents/jevapi.txt     # or: export TYPESAFE_API_KEY=...
+git clone https://github.com/blackopsrepl/Tranche && cd Tranche
+
+# one-time: give the model stages a key
+echo "apikey_..." > ~/Documents/jevapi.txt      # or: export TYPESAFE_API_KEY=...
+
+python3 tranche.py refresh                       # the whole pipeline, incremental
 ```
 
-## Usage
+That single command runs `fetch → judge → dupes → cluster → batches → page`
+in a fixed order and reuses everything its caches can still support. The
+first run judges the whole backlog (thousands of model calls); every run
+after that pays only for what actually changed. Open `docs/index.html` when
+it finishes — or just browse the live report linked above.
+
+Check what a refresh *would* do before spending anything:
 
 ```bash
-python3 tranche.py refresh          # whole pipeline, incremental, deterministic — the normal way
-python3 tranche.py refresh --dry-run # report what a refresh would re-run; writes nothing
-python3 tranche.py fetch            # atomically replace data/pages/snapshot.json (authenticated via gh)
-python3 tranche.py judge            # Jev pass over all PRs  (~7 questions, one call per PR)
-python3 tranche.py judge --resume   # reuse only matching input/question/model bindings
-python3 tranche.py dupes            # compare candidate pairs using shortened descriptions
-python3 tranche.py cluster          # build out/{clusters.json,dupes.json,tranches.md,summary.json}
-python3 tranche.py batches          # batch candidates into out/batches.json, park the rest (issue #8)
-python3 tranche.py all --resume     # judge --resume + dupes + cluster + batches
+python3 tranche.py refresh --dry-run
 ```
 
-`refresh` is the whole pipeline in the fixed order
-`fetch → judge --resume → dupes → cluster → batches → page`, and it is
-**incremental**: every stage reuses what its cache can still support. A PR is
-re-judged only when the evidence a judgment was based on actually changed, and a
-pair verdict is re-run only when one of its PRs did. A refresh with nothing new
-spends no model calls. `--max-pairs N` caps the pair comparisons per pass
-(default 400).
+## Everyday commands
 
-The evidence binding is what makes that safe: judgments and pair verdicts bind
-the captured fields a judgment depends on — title, description, head SHA, labels,
-draft state, diffstat, timestamps — not the whole GitHub pull-list envelope.
-Repository-wide counters that ride along in every response (`stargazers`,
-`forks`, `open_issues`, `pushed_at`) change on unrelated events and would
-otherwise invalidate the entire corpus on every fetch.
+```bash
+python3 tranche.py refresh           # normal day: whole pipeline, incremental, deterministic
+python3 tranche.py fetch             # re-capture open-PR membership (authenticated via gh)
+python3 tranche.py judge --resume    # model pass; resume reuses matching judgments only
+python3 tranche.py dupes             # re-run the candidate-pair comparisons
+python3 tranche.py cluster           # rebuild out/{clusters.json,dupes.json,tranches.md,summary.json}
+python3 tranche.py batches           # rebuild out/batches.json and parked.json
+python3 gen_page.py                  # render docs/index.html + workbench payload
+```
 
-## Read-only MCP access
+Cost intuition: a refresh with nothing new spends **zero** model calls. A full
+corpus re-judge is ~2,800 calls (~5M input tokens) and only happens when the
+question policy or the model changes — which is rare and deliberate. A dupe
+pass over all candidate pairs is a few hundred thousand tokens. The dry-run
+tells you which situation you are in before you commit to it.
 
-Agents can inspect the same local reports and retrieve batch reviewer prompts over
-stdio without a browser or copy/paste. The server implements the standard MCP
-stdio transport directly with the standard library: no SDK, no third-party runtime
-dependency, nothing to install or pin. It is harness-agnostic — any MCP client that
-speaks the protocol can drive it, and none is named or required here.
+## The MCP server
+
+Tranche can serve your local reports to AI agents over the
+[Model Context Protocol](https://modelcontextprotocol.io) — the same data the
+workbench shows, plus the per-batch reviewer prompts. The server is a single
+self-contained Python file. No SDK, no package install, no daemon, no
+database: your client launches it, it answers over stdio, done.
+
+### Starting it
 
 ```bash
 python3 mcp_server.py --root /absolute/path/to/Tranche
 ```
 
-Point your client at that command. Every client expresses the same two fields —
-the executable to launch and its arguments — under whatever name its own config
-file uses, so the shape below is a reference, not a supported-client list:
+The `--root` must be a Tranche checkout that already has reports — run
+`refresh` at least once. Every MCP client config expresses the same two
+fields (command + args) under its own names; the generic shape is:
 
 ```json
 {
@@ -92,64 +114,120 @@ file uses, so the shape below is a reference, not a supported-client list:
 }
 ```
 
-Protocol: JSON-RPC 2.0 over newline-delimited stdio (`initialize`, `tools/list`,
-`tools/call`, `ping`), negotiating protocol versions 2024-11-05 through 2025-11-25.
-Tools advertise JSON Schema input schemas and the standard `readOnlyHint`,
-`destructiveHint`, `idempotentHint` and `openWorldHint` annotations. Unknown tools
-return protocol error -32602; invalid arguments and stale reports return tool results
-with `isError: true`, so a model can correct itself.
+The server speaks standard JSON-RPC 2.0 over newline-delimited stdio
+(`initialize`, `tools/list`, `tools/call`, `ping`), negotiating protocol
+versions 2024-11-05 through 2025-11-25. Any conforming MCP client can drive
+it; no client is named or required. Tools advertise JSON Schema input schemas
+and standard `readOnlyHint` annotations. Invalid arguments and stale reports
+come back as tool errors with `isError: true` — so an agent can read the
+message and correct itself — and unknown tools get protocol error -32602.
 
-The server is a single self-contained script: no packaging, no build step, no
-service. Its `--root` may point at any Tranche report directory. Everything else
-runs through one interpreter — `make print-interpreter` shows which, and setting
-`PYTHON` overrides it everywhere (Makefile targets, tests, and your client
-config). If your client cannot launch the interpreter by name, use its absolute
-path.
+### The six tools
 
-The root defaults to the directory containing `tranche.py`, not the client's
-working directory. It must contain the captured PR snapshot (or legacy pages),
-judgment/pair JSONL caches and matching `out/` reports. Run `cluster` and `batches`
-with the pipeline before serving them. The server never acquires missing evidence,
-regenerates reports, calls Jev, claims work, or writes to GitHub.
-
-| Tool | Contract |
+| Tool | Answers the question |
 | --- | --- |
-| `surface()` | Computed corpus coverage, category counts, priority queue membership, batch ordinals, parked state with unblock paths, head-activity idle counts and available filters. |
-| `query(...)` | Text, category, risk band, security, exact finished-form score, batch and queue filters; security-first ordering; bounded pagination. Rows carry a `head_moved`/`idle_since` activity label. |
-| `pick(batch_id)` | The batch, member source/head bindings, per-member head-activity labels and the exact workbench `review_prompt`. |
-| `next_prompt(after)` | The next ordinal after an integer or batch ID; omitted cursor starts at the first batch. Exhaustion returns `batch: null`. Annotates the batch's members with head-activity labels. Stateless: no reservation or completed-work tracking. |
-| `related(number)` | Proposed group edges and explicit uncertain/contradictory/malformed diagnostics, with verdict and P(same) where available. |
-| `digests()` | Report binding, output digests and SHA-256 hashes of the input/report bytes read. |
+| `surface()` | "What's in the corpus right now?" Coverage, category counts, queue sizes, batch inventory, parked state, activity counts, available filters. |
+| `query(...)` | "Which PRs match this?" Filter by text, category, risk band, security, exact finished-form score, batch or queue; security-first ordering, paginated. |
+| `pick(batch_id)` | "What exactly is batch B042?" Members with source bindings and the exact reviewer prompt the workbench would copy. |
+| `next_prompt(after)` | "What's the next batch to review?" Walks batches in report order; stateless — no reservations, nothing is marked done. |
+| `related(number)` | "What is this PR related to?" Model relationship evidence with explicit uncertain/contradictory diagnostics. |
+| `digests()` | "Am I looking at the right report?" Report binding and SHA-256 digests of every input and output read. |
 
-Every result carries the repository, provenance, digests and metadata-only evidence
-warning. Unknown values remain null/unknown. Related does not mean verified duplicate;
-prompts are review instructions, not executable authorization. Digests establish local
-consistency, not source authenticity or current GitHub state. Recheck revisions before
-acting on a PR.
+Every result carries the repository, provenance digests and a disclaimer:
+model suggestions from titles and shortened descriptions — never merge
+approval, never verified duplication. Unknown values stay `null`, never zero.
 
-Every call revalidates report bindings, output digests and exact batch recomputation;
-changed/mixed reports and files changed during reading fail with MCP tool errors.
-Historical stale/unbound cache rows are excluded exactly as in the producer, not
-served as claims. Missing `batches.json` permits inventory/query/related tools but
-prompt tools fail; a present invalid batch file fails all tools. `--allow-unbound`
-reports are refused. Repair inputs with the pipeline rather than bypassing this gate.
+### Updating and maintaining it
 
-Query and related results default to 25 items (maximum 100), with `next_offset` for
-pagination. Queries accept at most 512 text characters. Inputs are limited to
-128 MiB per file, 256 MiB total and at most 512 paths; response JSON text to 1 MiB.
-Arguments reject coercion, unexpected fields and invalid ranges. The client launches
-the server process; protocol stdout stays free of banners.
+The server has **no state of its own**. It reads the report files under
+`--root` on every call and revalidates their binding digests each time, so
+"updating" means updating the reports, not the server process:
 
-For an explicit real-client subprocess check against the unchanged local corpus
-(the MCP package is blocked inside the server process, proving it is not borrowed):
+1. **New data:** run `python3 tranche.py refresh` (or the individual stages).
+   The next `surface()` call reflects it. No server restart needed for data.
+2. **New code:** `git pull`. This is the one case where you *must* restart the
+   server process — a long-running process keeps its old code in memory and
+   will refuse the new reports with a staleness error. Kill it; the client
+   respawns a fresh one on its next call.
+3. **New categories or tools:** clients cache the tool list per session, so
+   reconnect the client (or start a new session) after a schema-changing
+   update even if the server itself is fresh.
+
+Health checks, cheapest first: call `digests()` and compare
+`report_binding` against `out/summary.json`; discover the tools with
+`hermes mcp test tranche` (on Hermes) or your client's equivalent; or run the
+full integration check against a disposable copy of the corpus:
 
 ```bash
 make mcp-check MCP_PYTHON=/path/to/python-with-mcp-sdk
 ```
 
-This opt-in check discovers all tools, reads a real batch/prompt, rejects malformed
-arguments and refuses altered batches in a disposable copy. Normal `make check`
-exercises the SDK-independent core with synthetic inputs and skips this integration.
+When something goes wrong:
+
+| Symptom | What it means | Fix |
+| --- | --- | --- |
+| every tool says "Reports are stale, unbound, foreign or modified; rerun cluster" | the report files and the code that validates them disagree | restart the server process; if the reports really are old, run `refresh` |
+| a new category or tool is missing in your client | the client cached its session's tool list | reconnect the client / start a new session |
+| `pick` / `next_prompt` fail, other tools work | no batch file in this report root | `python3 tranche.py batches` |
+| refusal naming an argument or enum value | the call didn't match the advertised schema | fix the arguments; the message lists what is accepted |
+| everything fails on a copied directory | the copy is missing snapshot, caches or matching `out/` reports | serve a complete report root, or run the pipeline there |
+
+Hard limits, by design: results paginate at 25 items (max 100), query text
+caps at 512 characters, input files at 128 MiB (256 MiB total, 512 paths),
+responses at 1 MiB. `--allow-unbound` inspection reports are refused outright.
+
+## FAQ
+
+**Does Tranche merge or close anything?**
+No. The pipeline and the MCP server are read-only toward GitHub. Nothing
+claims, reserves or approves work.
+
+**What does "duplicate" mean here?**
+A Jev judgment that two PRs propose the same underlying change, with the
+model-consistency checks described below. It is a merge-review lead, not a
+verified duplicate — always compare sources before closing anything, and note
+that PR age never selects a survivor.
+
+**Why is a risk score wrong?**
+Because it judges `title + body + diffstat` only. It never reads patches,
+test results or CI. Treat scores as sorting hints for human review, and treat
+`unknown` (null) as unknown — the pipeline never fakes a zero.
+
+**What does a refresh cost?**
+Nothing when nothing changed. Rough numbers for this backlog: full re-judge
+~2,800 calls / ~5M input tokens (only after a question-policy or model
+change), a full dupe pass a few hundred thousand tokens. `refresh --dry-run`
+reports the situation without spending anything.
+
+**Why did all judgments suddenly invalidate?**
+The question policy or the model changed, so every cached answer no longer
+answers *today's question*. That invalidation is the point — it is how a new
+category like `user-experience` becomes real instead of cosmetic. The next
+`refresh` re-judges the corpus once; expect a full-corpus pass, and run the
+dupe stage with a raised `--max-pairs` (e.g. `refresh --max-pairs 900`) so
+the pair comparisons aren't cut off mid-pass.
+
+**The MCP server says "reports are stale" right after I pulled new code.**
+A running server process holds its old code in memory. Restart it (see the
+maintenance table above); your client will relaunch it automatically.
+
+**Do I need a Jev key to try this?**
+Not for `fetch`, `cluster`, `page`, the MCP server, or the tests. Only
+`judge` and `dupes` call the model.
+
+**Where do the reviewer prompts come from?**
+Each batch carries one, stored in `out/batches.json` and byte-identical to
+the workbench's Copy button. It is review *instruction* for an agent, not
+executable authorization.
+
+**Can several agents share one server?**
+Each client launches its own server process; the processes are stateless and
+read-only, so they can't get in each other's way. The shared state is the
+report directory itself.
+
+**How do I cut a release?**
+See [Versioned releases](#versioned-releases) — one command plus a push, and
+the GitHub release publishes itself.
 
 ## What Jev is asked (one batched call per PR)
 
@@ -163,174 +241,101 @@ exercises the SDK-independent core with synthetic inputs and skips this integrat
 | `review_effort` | Score | 0 trivial → 3 substantial                           |
 | `security_flag` | Noul  | P(touches secrets/sudo/remote-code/network exposure) |
 
-## Evidence and candidate groups
+## How the evidence binds
 
-The per-PR projection includes title, author, draft status and at most 1200
-cleaned body characters. Pair comparisons receive titles and at most 400 body
-characters each. These calls do **not** inspect patches, test/CI results,
-reproductions, merged history or full fix coverage. `finished_form` reflects
-described testing, not testing performed by this pipeline. Risk/security scores
-are model suggestions; their probabilities have not been independently calibrated.
+Judgments bind the fields they were based on — title, body, head SHA, labels,
+draft state, diffstat, timestamps, the exact question set and the model — not
+the whole GitHub response envelope, whose repository-wide counters change on
+unrelated events. A re-fetch that changed nothing reuses everything; a changed
+description re-asks. The same discipline applies to pair verdicts. Resume
+reuses only matching records, and matching-but-malformed responses are
+reported as unknowns, never silently dropped. A floating alias like
+`jev-latest` can drift under its fixed name; pin a concrete model or re-run
+`judge` when that matters.
 
-The GitHub PR-list response generally omits diffstat. Missing or invalid counts
-are explicitly **unknown**, never zero. Enriched legacy pages can provide real
-counts, but neither input path verifies patch contents.
+`fetch` commits exact observed membership atomically — a failed capture
+leaves the previous snapshot untouched — and runs through `gh api` so the
+credential never touches a command line. Unauthenticated GitHub allows 60
+requests/hour and one capture costs ~29. Pagination is not a point-in-time
+snapshot: a captured PR may have changed by the time you read it.
 
-Title similarity (SequenceMatcher ≥ 0.72 or Jaccard ≥ 0.62) within a model category,
-plus body references, proposes pairs. Body references are read literally and
-repository-qualified (issue #10): `#123`, `omacom/omarchy#123` and a pasted
-`github.com/omacom/omarchy/pull/123` link all name the same PR of the reviewed
-repository, while `omacom/omarchy-pkgs#123` or a link to any other repository is
-dropped instead of being re-read as a bare number — it is never mistaken for
-Omarchy's own #123. A PR's own number is never a reference, so a description
-cannot pair a PR with itself. A reference only selects a PR for comparison; it is
-not evidence of duplication. `same_change` with P(same) ≥ 0.65 proposes a
-connection. A connected group is only model-consistent when **all** its internal
-pairs were tested and agree. Contradictory, uncertain, untested or unbound internal
-relationships go to `review_groups` with their diagnostics. The shared pair classifier
-also exposes standalone contradictory or malformed responses in `uncertain_pairs`,
-Markdown and HTML: a different-change verdict with P(same) ≥ 0.65, or a same-change
-verdict with P(same) < 0.35, contradicts its probability. The middle band remains
-uncertain, not contradictory. A valid different-change verdict with P(same) < 0.35
-remains strong difference evidence (and a conflict inside a connected group), not
-an undecided standalone pair. Invalid verdicts or probabilities are malformed.
-Even a consistent
-model group still needs source comparison. PR age does not select a survivor;
-no member is automatically marked superseded.
+Published historical judgments have no bindings and cannot be retrofitted;
+`judge --resume` re-evaluates them at API cost. `--limit N` (judge) and
+`--max-pairs N` (dupes) bound work per pass. For offline inspection only,
+`cluster --allow-unbound` includes legacy judgments with warnings; they never
+enter review candidates or batches.
 
 ## Outputs
 
-- `out/tranches.md` — model-suggested review candidates, relationship diagnostics,
-  risk/security escalation leads and possible author follow-up.
-- `out/clusters.json` — matching judgments by category × model risk band
-  (`low`, `core`, `danger`, `unknown`); includes source digest, head SHA and URL.
-- `out/dupes.json` — `confirmed_groups` (model-consistent candidates, **not verified
-  duplicates**), `review_groups` and `uncertain_pairs`.
-- `out/batches.json` — suggested merge batches per category of work
-  (issue #4), bound to the `dupes.json` digest recorded in `summary.json`.
-- `out/summary.json` — counts, token usage for selected records, input binding and
-  output digests. Historical `ready_*` keys now count **review candidates**;
-  `superseded` is zero and `superseded_by` is null. `security_priority` counts
-  the security meta-category.
-- `python3 gen_page.py` — render the matching report to `docs/index.html` plus the
-  workbench payload `docs/data/workbench.json` (fetched by the page at boot). Refuses
-  legacy, changed or mixed report inputs until `cluster` is rerun.
+- `out/tranches.md` — review candidates, relationship diagnostics, risk/security
+  escalation leads, author follow-up leads, and the batch plan.
+- `out/clusters.json` — judgments grouped by category × risk band
+  (`low`, `core`, `danger`, `unknown`), with source digests and URLs.
+- `out/dupes.json` — `confirmed_groups` (model-consistent candidates, **not
+  verified duplicates**), `review_groups` and `uncertain_pairs`.
+- `out/batches.json` — merge batches bound to the `dupes.json` digest;
+  `out/parked.json` — PRs held out of batches (drafts, unfinished forms,
+  unjudged/stale, same-change holds) with their unblock paths.
+- `out/summary.json` — counts, token usage, report binding and output digests.
+- `docs/index.html` + `docs/data/workbench.json` — the rendered workbench.
 
-Review-candidate thresholds remain risk ≤ 1.5, finished_form ≥ 1.8, is_fix ≥ 0.6,
-security_flag < 0.5, outside a candidate group. All required numeric fields
-(including review effort) must be valid; the judgment must be current and the PR
-must not be a draft. Missing judgment fields cannot qualify an item.
+Review-candidate thresholds: risk ≤ 1.5, finished_form ≥ 1.8, is_fix ≥ 0.6,
+security_flag < 0.5, current judgment, not a draft, outside a candidate
+group. A missing field can never qualify a PR.
 
 ## Security meta-category (top priority)
 
-Security is a meta-classification over **all** captured PRs, not a category
-slot: every PR whose `security_flag` probability reaches 0.5 joins a
-cross-cutting `security-review` set that outranks every category. It is the
-first section of `tranches.md` (probability-first order), the `security-review`
-key of `clusters.json`, the leading **Security first** queue of the workbench,
-and a **Security (meta)** entry at the top of the category sidebar — the
-answer to "which of all PRs are security related?". Flagged rows carry a red
-tag and the inspector shows the probability. Membership never replaces a PR's
-own category; an unknown security probability is never flagged. Review these
-before any batch.
+Security is a cross-cutting classification over **all** PRs, not a category
+slot: every PR whose `security_flag` reaches 0.5 joins a `security-review`
+set that outranks every category — first section of `tranches.md`, first
+queue of the workbench, top of the sidebar. Review these before any batch.
+Membership never replaces a PR's own category, and an unknown probability is
+never flagged.
 
-## Suggested pre-release batches
+## Batches
 
-A **batch is a Jev-determined group of PRs to merge into ONE pull request**
-(`tranche.py batches`, issue #4): exactly the model-consistent `same_change`
-groups from the dupe pipeline. Batches are **disjoint** — every PR belongs to
-at most one batch — and groups with contradictory or untested internal
-evidence (review groups) plus uncertain pairs are excluded on purpose.
-Batches are ordered security-first (batches containing security-related PRs
-merge first), then by risk band, then by the newest evidenced idle bound in the
-group: the head revision bound at judgment time is the activity signal, because
-`updated_at` on this repository is continuous bot churn (issue #11). A PR whose
-head changed since its bound judgment is "head revised" — it sinks in the order
-and is flagged — without any extra GitHub or model calls; each batch becomes one
-cumulative PR of the final deliverable. Batches are a model-suggested
-plan, never verified safe to merge. Output: `out/batches.json` (bound to the
-dupes digest; `gen_page.py` refuses a stale file), the batch plan appended to
-`out/tranches.md`, and the **Batches** view with per-batch member browsing,
-reviewer agent prompts and per-PR batch detail in the workbench. PRs outside a
-confirmed group are intentionally
-unbatched.
+A **batch is a Jev-determined group of PRs to merge into ONE pull request**:
+exactly the model-consistent `same_change` groups, disjoint by construction.
+Groups with contradictory or untested internal evidence and uncertain pairs
+are excluded on purpose — being unbatched is the honest state for them, and
+`out/parked.json` records why each held-out PR is there. Batches are ordered
+security-first, then risk band, then activity: `updated_at` on this repo is
+continuous bot churn, so the activity signal is the head SHA bound at
+judgment time ("head revised" = the author pushed since). Batches are a
+plan, never a verified-safe merge.
 
-## Freshness and migration
-
-`fetch` commits exact observed membership in one atomic local snapshot, including
-empty results and page-boundary endings. Failed pagination leaves the previous
-snapshot untouched. Captures run through `gh api`, which is already
-authenticated — unauthenticated GitHub allows 60 requests an hour and one
-capture of this backlog costs about 29 — and the credential stays inside `gh`
-rather than being passed on a command line where `ps` would expose it.
-`--transport curl|urllib` remain for hosts that need the original unauthenticated
-paths. `make refresh` runs the incremental pipeline; `make all` still runs the
-stages in order. GitHub pagination is not a point-in-time snapshot: PRs can
-change during acquisition, and this tool does not certify that a captured item is
-still open when read later.
-
-Each new judgment binds the repository, the captured PR evidence digest, actual
-projected model input, questions, requested model and binding version — where the
-evidence digest covers the fields a judgment depends on and deliberately excludes
-the repository-wide counters that change on unrelated events. Pair records bind
-both PRs' evidence and the pair questions. A record whose binding no longer
-matches is still reusable when its own stored projection is byte-identical today
-and the model alias is unchanged, which is how judgments taken before evidence
-digests existed keep verifying exactly as they were judged. Resume reuses only
-matching records; closed, changed or differently
-configured inputs are excluded from reports. Matching but malformed responses remain
-reportable as unknown values with `normalization_errors`; they are not resume hits.
-Required category, risk, finished-form, effort, fix and security answers must be valid
-for judgment reuse (the advisory dupe signal is optional). Pair reuse requires a valid
-verdict and finite P(same). New responses and existing JSONL caches share normalization:
-invalid metrics become null, valid evidence is retained, non-finite numbers are removed,
-and usage counters become nonnegative integers (invalid/missing counters become zero).
-Malformed JSONL records without valid positive integer identities are ignored. Recovery
-is in memory and never adds bindings to legacy records. New JSONL writes are strict JSON.
-New records retain the input,
-requested model, returned model/request ID when supplied, and judgment time.
-The local digest detects changed captured bytes, not authenticity or live freshness.
-A floating model alias such as `jev-latest` can move without changing the requested
-name; use a fixed supported model name or rerun `judge` to force reevaluation.
-
-**Published historical judgments have no bindings and cannot safely be retrofitted.**
-`judge --resume` will reevaluate them, which incurs API cost. Run `judge --resume
---limit N` and `dupes --max-pairs N` to bound work per pass (`all --resume --limit N
---max-pairs N` also works). Reports explicitly count excluded unjudged/stale items.
-For offline inspection only, `cluster --allow-unbound` includes legacy judgments
-with warnings; they never enter review-candidate tranches. Bound-but-stale records
-remain excluded even in this mode. Existing published output files are retained
-as historical artifacts rather than regenerated without their original inputs.
-
-## Offline regression checks
+## Development
 
 ```bash
-python3 -m unittest discover -s tests -v  # or make test
+make test          # unit tests, synthetic inputs, no network, no credentials
+make check         # tests + lint + optional real-browser workbench probe
+make mcp-check MCP_PYTHON=/path/to/venv-python   # opt-in real-client MCP integration
 ```
-
-Tests use synthetic inputs and mocked transports/model responses. They make no
-network calls, require no credentials and do not modify the published reports.
 
 ## Versioned releases
 
-Release tooling requires Node and `commit-and-tag-version` (install with
-`npm install --global commit-and-tag-version@12.5.0`), plus Ruff for `make check`.
-These are developer tools, not runtime Python dependencies. `VERSION` is the only
-version surface; `.versionrc.js` owns its bumps, generated `CHANGELOG.md`, the
-`chore(release)` commit and `v` tag. Never update those by hand.
-
-After merging conventional fix/feature commits, release from a clean, up-to-date
-`main`:
+One coherent iteration produces one release tag. `VERSION` and
+`CHANGELOG.md` are owned by [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version)
+(`.versionrc.js`); never edit them by hand. Developer tooling: Node,
+`commit-and-tag-version` and Ruff — no runtime Python dependencies.
 
 ```bash
 git pull --ff-only origin main
-make release-dry-run  # offline checks, clean-main gate, preview; no writes/tags
-make release         # same gate, then tool-generated version/changelog/commit/tag
-git push --atomic origin main "$(git describe --exact-match --tags HEAD)"
+make release-dry-run        # offline checks, clean-main gate, preview; no writes
+npx commit-and-tag-version --release-as minor   # or plain for the computed bump
+git push --follow-tags origin main
 ```
 
-Without `--release-as`, the tool chooses the next version from conventional
-commits. One coherent iteration produces one release tag. Inspect the generated
-changelog and verify the remote branch/tag after pushing. Releases version the
-code, not the freshness or correctness of historical model judgments; neither
-release target calls GitHub or Jev or regenerates captured evidence.
+The pushed `v*` tag triggers the `release` workflow
+(`.github/workflows/release.yml`), which publishes the GitHub release from
+that tag's own `CHANGELOG.md` section — notes can never drift from the
+changelog. A tag that predates the workflow (or any existing tag) can be
+published retroactively through the same path:
+
+```bash
+gh workflow run release --ref main -f tag=v0.8.1
+```
+
+Verify afterwards with `gh release list` — the releases page, not the tag
+list, is what people see. Releases version the code, not the freshness or
+correctness of historical model judgments.
