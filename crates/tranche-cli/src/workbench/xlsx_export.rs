@@ -1,4 +1,4 @@
-use rust_xlsxwriter::{Format, Workbook, Worksheet, XlsxError};
+use rust_xlsxwriter::{DocProperties, ExcelDateTime, Format, Workbook, Worksheet, XlsxError};
 use serde_json::{Value, json};
 use tranche_core::report::Root;
 use tranche_core::util::atomic_write;
@@ -38,6 +38,9 @@ pub(super) fn write(root: &Root, payload: &Value, report_binding: &str) -> Resul
     let document = super::export_data::document(payload, report_binding);
     let path = root.docs_dir().join("data/report.xlsx");
     let mut workbook = Workbook::new();
+    // Keep generated workbooks byte-stable for identical report inputs.
+    let created = ExcelDateTime::from_ymd(2000, 1, 1).map_err(|error| error.to_string())?;
+    workbook.set_properties(&DocProperties::new().set_creation_datetime(&created));
     write_report(&mut workbook, &document).map_err(|error| error.to_string())?;
     write_prs(&mut workbook, &document["pull_requests"]).map_err(|error| error.to_string())?;
     write_groups(&mut workbook, &document["groups"]).map_err(|error| error.to_string())?;
