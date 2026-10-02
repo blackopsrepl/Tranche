@@ -1,0 +1,46 @@
+# Skill taxonomy for issue #5: skill-based PR assignment.
+# Single source of truth for the Jev qualification pass (resumes → skills)
+# and the required-skills question (PRs → skills). Both read this file.
+
+[skills]
+[skills.packaging]
+description = "PKGBUILD, makepkg, package build, install scripts, Arch packaging"
+
+[skills.nvidia]
+description = "NVIDIA driver, GPU, graphics stack, CUDA, Optimus"
+
+[skills.waybar]
+description = "waybar config, modules, styling, CSS"
+
+[skills.release-engineering]
+description = "version bumps, changelog, release machinery, CI/CD"
+
+[skills.security-review]
+description = "credentials, permissions, network exposure, crypto, sudo"
+
+[skills.hardware-drivers]
+description = "wifi, bluetooth, audio, power, HiDPI, laptops, ARM/Snapdragon, firmware"
+
+[skills.desktop-config]
+description = "Hyprland, Walker, wlogout, mako, keybinds, wallpapers, theming"
+
+[skills.shell-cli]
+description = "zsh config, aliases, starship, CLI tool defaults, terminal usage"
+
+[skills.apps-integrations]
+description = "default apps, mime handling, new application integrations"
+
+[skills.update-release]
+description = "omarchy-update, version bumps, release machinery, migration between versions, boot entries"
+
+[skills.agents-ai]
+description = "AI coding agents, agent hooks, MCP, integrations for Claude/Codex/Gemini-like tools"
+
+[skills.docs]
+description = "README, documentation, wiki, help text"
+
+[skills.install-setup]
+description = "omarchy-setup menu, installer, first boot, ISO, dotfiles bootstrap"
+
+[skills.user-experience]
+description = "default/taste or look-and-feel proposals, themes, icons, fonts, bar or menu aesthetics"
