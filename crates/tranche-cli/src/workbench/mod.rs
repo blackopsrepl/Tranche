@@ -9,10 +9,13 @@
 //! Eligibility stays in the pipeline's own predicates. This never reclassifies a
 //! judgment; it arranges what the report already says.
 
+mod export_data;
+mod json_export;
 mod labels;
 mod page;
 mod payload;
 mod writing;
+mod xlsx_export;
 
 pub use labels::CATEGORY_LABELS;
 pub use page::page;

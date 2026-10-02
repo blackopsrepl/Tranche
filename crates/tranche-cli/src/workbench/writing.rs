@@ -11,7 +11,7 @@ use tranche_core::report::Root;
 use super::CATEGORY_LABELS;
 
 /// Write the page and its payload, and report the sizes.
-pub(super) fn write(root: &Root, payload: Value) -> Result<(usize, usize), String> {
+pub(super) fn write(root: &Root, payload: &Value) -> Result<(usize, usize), String> {
     let template = std::fs::read_to_string(root.template_path())
         .map_err(|error| format!("cannot read {}: {error}", root.template_path().display()))?;
     let options: String = CATEGORY_LABELS

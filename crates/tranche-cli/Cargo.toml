@@ -15,9 +15,12 @@ path = "src/main.rs"
 clap = { version = "4.6.7", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+rust_xlsxwriter = "0.99"
 tranche-core = { path = "../tranche-core" }
 time = { version = "0.3", features = ["formatting"] }
 tokio = { version = "1", features = ["macros", "rt", "time"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+jsonschema = { version = "0.58.4", default-features = false }
+zip = { version = "8.6", default-features = false, features = ["deflate"] }

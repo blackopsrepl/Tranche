@@ -18,7 +18,12 @@ use crate::commands::Outcome;
 use crate::report_files::read_json;
 
 /// Render the workbench from the bound reports.
-pub fn page(root: &Root, report: &mut dyn FnMut(&str)) -> Outcome {
+pub fn page(
+    root: &Root,
+    export_json: bool,
+    export_xlsx: bool,
+    report: &mut dyn FnMut(&str),
+) -> Outcome {
     let corpus: Prs = match load_prs(root, REPOSITORY) {
         Ok(corpus) => corpus,
         Err(error) => return Outcome::refusal(format!("corpus: {}", error.0), 1),
@@ -118,17 +123,40 @@ pub fn page(root: &Root, report: &mut dyn FnMut(&str)) -> Outcome {
         parked.as_ref(),
         root,
     );
-    match super::writing::write(root, built) {
-        Ok((html, json_bytes)) => {
-            report(&format!(
-                "wrote {}/index.html ({} KB) and {}/data/workbench.json ({} KB)",
-                root.docs_dir().display(),
-                html / 1024,
-                root.docs_dir().display(),
-                json_bytes / 1024
-            ));
-            Outcome::success(String::new())
-        }
-        Err(error) => Outcome::refusal(error, 1),
+    let (html, json_bytes) = match super::writing::write(root, &built) {
+        Ok(sizes) => sizes,
+        Err(error) => return Outcome::refusal(error, 1),
+    };
+
+    let mut message = format!(
+        "wrote {}/index.html ({} KB) and {}/data/workbench.json ({} KB)",
+        root.docs_dir().display(),
+        html / 1024,
+        root.docs_dir().display(),
+        json_bytes / 1024
+    );
+    if export_json {
+        let bytes = match super::json_export::write(root, &built, &binding) {
+            Ok(bytes) => bytes,
+            Err(error) => return Outcome::refusal(error, 1),
+        };
+        message.push_str(&format!(
+            " and {}/data/report.json ({} KB)",
+            root.docs_dir().display(),
+            bytes / 1024
+        ));
     }
+    if export_xlsx {
+        let bytes = match super::xlsx_export::write(root, &built, &binding) {
+            Ok(bytes) => bytes,
+            Err(error) => return Outcome::refusal(error, 1),
+        };
+        message.push_str(&format!(
+            " and {}/data/report.xlsx ({} KB)",
+            root.docs_dir().display(),
+            bytes / 1024
+        ));
+    }
+    report(&message);
+    Outcome::success(String::new())
 }

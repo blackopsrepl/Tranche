@@ -66,7 +66,7 @@ pub fn refresh(
             "dupes" => crate::dupes::dupes(root, max_pairs, &mut say).map(|_| ()),
             "cluster" => outcome_of(cluster_report(root, false, false)),
             "batches" => outcome_of(build_batches(root, false)),
-            "page" => outcome_of(crate::workbench::page(root, &mut say)),
+            "page" => outcome_of(crate::workbench::page(root, false, false, &mut say)),
             other => Err(format!("unknown step {other}")),
         };
         if let Err(error) = outcome {

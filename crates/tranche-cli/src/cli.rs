@@ -51,7 +51,7 @@ pub enum Command {
     /// Serve the read-only MCP stdio surface over the bound report.
     Mcp,
     /// Render the workbench from the bound reports.
-    Page,
+    Page(Page),
     /// Capture, inspect and export public PR evidence.
     #[command(subcommand_required = true, arg_required_else_help = true)]
     Evidence {
@@ -112,6 +112,17 @@ pub struct Cluster {
     /// Inspect legacy judgments with freshness warnings.
     #[arg(long)]
     pub allow_unbound: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct Page {
+    /// Also write the standalone JSON report to docs/data/report.json.
+    #[arg(long)]
+    pub export_json: bool,
+
+    /// Also write the filterable Excel workbook to docs/data/report.xlsx.
+    #[arg(long)]
+    pub export_xlsx: bool,
 }
 
 #[derive(Debug, Args)]
