@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/blackopsrepl/Tranche/master/docs/page-export.schema.json",
+  "title": "Tranche standalone page export",
+  "description": "Versioned export written by tranche page --export-json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "schema_version", "repository", "report_binding", "pull_requests", "categories", "groups", "batches_available", "batches", "parked"],
+  "properties": {
+    "format": {"const": "tranche.page-export"},
+    "schema_version": {"const": 1},
+    "repository": {"type": "string", "minLength": 1},
+    "report_binding": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "pull_requests": {"type": "array", "items": {"$ref": "#/$defs/pullRequest"}},
+    "categories": {"type": "object", "additionalProperties": {"type": "string"}},
+    "groups": {"$ref": "#/$defs/groups"},
+    "batches_available": {"type": "boolean"},
+    "batches": {"type": "array", "items": {"$ref": "#/$defs/batch"}},
+    "parked": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/parked"}]}
+  },
+  "$defs": {
+    "nullableNumber": {"type": ["number", "null"]},
+    "nullableString": {"type": ["string", "null"]},
+    "activity": {
+      "type": "object",
+      "required": ["head_moved", "idle_since", "idle_basis", "thread_updated"],
+      "properties": {
+        "head_moved": {"type": "boolean"},
+        "idle_since": {"$ref": "#/$defs/nullableString"},
+        "idle_basis": {"enum": ["creation", "judgment", "unknown"]},
+        "thread_updated": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "pullRequest": {
+      "type": "object",
+      "required": ["number", "title", "body", "body_truncated", "author", "created", "draft", "activity", "category", "categories", "freshness", "risk", "security", "security_priority", "finished", "effort", "is_fix", "diffstat", "candidate", "senior", "followup", "related", "parked", "batches"],
+      "properties": {
+        "number": {"type": "integer", "minimum": 1},
+        "title": {"type": "string"},
+        "body": {"type": "string"},
+        "body_truncated": {"type": "boolean"},
+        "author": {"type": "string"},
+        "created": {"type": "string"},
+        "draft": {"type": "boolean"},
+        "activity": {"$ref": "#/$defs/activity"},
+        "category": {"type": "string"},
+        "categories": {"type": "array", "items": {"type": "string"}},
+        "freshness": {"type": "string"},
+        "risk": {"$ref": "#/$defs/nullableNumber"},
+        "security": {"$ref": "#/$defs/nullableNumber"},
+        "security_priority": {"type": "boolean"},
+        "finished": {"$ref": "#/$defs/nullableNumber"},
+        "effort": {"$ref": "#/$defs/nullableNumber"},
+        "is_fix": {"$ref": "#/$defs/nullableNumber"},
+        "diffstat": {"type": "string"},
+        "candidate": {"type": "boolean"},
+        "senior": {"type": "boolean"},
+        "followup": {"type": "boolean"},
+        "related": {"type": "boolean"},
+        "parked": {"type": "array", "items": {"type": "string"}},
+        "batches": {"type": "array", "items": {"$ref": "#/$defs/prBatch"}}
+      },
+      "additionalProperties": false
+    },
+    "prBatch": {
+      "type": "object",
+      "required": ["id", "count"],
+      "properties": {"id": {"type": "string"}, "count": {"type": "integer", "minimum": 0}},
+      "additionalProperties": false
+    },
+    "groups": {
+      "type": "object",
+      "required": ["confirmed_groups", "review_groups", "uncertain_pairs", "meaning"],
+      "properties": {
+        "confirmed_groups": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}}},
+        "review_groups": {"type": "array", "items": {"type": "object", "required": ["members"], "properties": {"members": {"type": "array", "items": {"type": "integer"}}}, "additionalProperties": true}},
+        "uncertain_pairs": {"type": "array", "items": {"type": "object", "required": ["a", "b"], "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}}, "additionalProperties": true}},
+        "meaning": {"type": "string"}
+      },
+      "additionalProperties": true
+    },
+    "batch": {
+      "type": "object",
+      "required": ["id", "count", "members", "security_members", "average_risk", "created", "review_prompt"],
+      "properties": {
+        "id": {"type": "string"},
+        "count": {"type": "integer", "minimum": 0},
+        "members": {"type": "array", "items": {"type": "integer"}},
+        "security_members": {"type": "integer", "minimum": 0},
+        "average_risk": {"$ref": "#/$defs/nullableNumber"},
+        "created": {"type": "string"},
+        "review_prompt": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "parked": {
+      "type": "object",
+      "required": ["format_version", "repo", "dupes_digest", "parked", "meaning", "members"],
+      "properties": {
+        "format_version": {"const": 1},
+        "repo": {"type": "string"},
+        "dupes_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "parked": {"type": "integer", "minimum": 0},
+        "meaning": {"type": "string"},
+        "members": {"type": "array", "items": {"$ref": "#/$defs/parkedMember"}}
+      },
+      "additionalProperties": true
+    },
+    "parkedMember": {
+      "type": "object",
+      "required": ["number", "title", "author", "reasons", "unblock", "head_sha", "url", "created", "security_flag"],
+      "properties": {
+        "number": {"type": "integer", "minimum": 1},
+        "title": {"type": "string"},
+        "author": {"type": "string"},
+        "reasons": {"type": "array", "items": {"type": "string"}},
+        "unblock": {"type": "string"},
+        "head_sha": {"$ref": "#/$defs/nullableString"},
+        "url": {"$ref": "#/$defs/nullableString"},
+        "created": {"type": "string"},
+        "security_flag": {"$ref": "#/$defs/nullableNumber"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

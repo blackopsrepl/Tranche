@@ -31,7 +31,7 @@ tranche cluster [--allow-unbound]
 tranche batches
 tranche refresh [--max-pairs N] [--no-page] [--dry-run]
 tranche all [--limit N] [--resume] [--max-pairs N]
-tranche page
+tranche page [--export-json] [--export-xlsx]
 tranche --root /absolute/path/to/Tranche mcp
 tranche evidence capture --batch B001 [--request-budget N] [--max-bytes N]
                                  [--fresh] [--reuse-capture ID] [--break-lock]
@@ -41,8 +41,10 @@ tranche evidence export [--batch B001 | --capture ID] --output FILE
                         [--allow-historical] [--request-budget N] [--max-bytes N]
 ```
 
-Use `tranche COMMAND --help` for its flags. The evidence service retains its
-native capture, resume, selection, sharing gate and exit-code contracts; see
+Use `tranche COMMAND --help` for its flags. `page --export-json` and
+`page --export-xlsx` optionally write a standalone report alongside the
+workbench; see [the export contract](PAGE_EXPORT.md). The evidence service retains
+its native capture, resume, selection, sharing gate and exit-code contracts; see
 [the evidence guide](EVIDENCE_CLI.md). Repeat capture to resume, or explicitly
 select a generation with `--reuse-capture ID`. Stored evidence stays local under
 the checkout's ignored `out/evidence/` directory.

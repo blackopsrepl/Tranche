@@ -85,6 +85,7 @@ tranche dupes                 # compare candidate pairs
 tranche cluster               # build clusters, dupes, tranches.md, summary
 tranche batches               # pack batches, write the park record
 tranche page                  # render the workbench
+tranche page --export-json --export-xlsx # optionally write standalone exports
 ```
 
 `tranche refresh` runs those stages in that fixed order and reuses whatever its
@@ -119,7 +120,7 @@ tranche dupes [--max-pairs N]                # candidate-pair comparisons
 tranche cluster [--allow-unbound]            # offline; no model, no network
 tranche batches                              # offline; packs batches from the report
 tranche info                                 # read the current report's numbers
-tranche page                                 # render docs/index.html
+tranche page [--export-json] [--export-xlsx]  # render, with optional standalone exports
 tranche refresh [--max-pairs N] [--no-page] [--dry-run]
 tranche all                                  # judge --resume, dupes, cluster, batches
 ```
@@ -176,7 +177,9 @@ Everything lands in `out/`, and all of it is tracked in this repository:
 | `batches.json` | Merge batches bound to the `dupes.json` digest. |
 | `parked.json` | PRs held out of batches, each with its named unblock path. |
 | `summary.json` | Counts, token usage, report binding and output digests. |
-| `docs/index.html`, `docs/data/workbench.json` | The rendered workbench. |
+| `docs/index.html`, `docs/data/workbench.json` | The rendered workbench and its private client payload. |
+| `docs/data/report.json` | Optional versioned standalone JSON export; see [the export schema](docs/PAGE_EXPORT.md). |
+| `docs/data/report.xlsx` | Optional filterable Excel export. |
 
 Review-candidate thresholds: risk ≤ 1.5, finished_form ≥ 1.8, is_fix ≥ 0.6,
 security_flag < 0.5, current judgment, not a draft, outside a candidate group. A

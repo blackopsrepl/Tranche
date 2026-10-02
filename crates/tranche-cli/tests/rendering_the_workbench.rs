@@ -6,6 +6,7 @@
 //! stops it.
 
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Output};
 
@@ -45,10 +46,15 @@ fn copy(source: &Path, destination: &Path) {
 }
 
 fn run(root: &Path) -> Output {
+    run_with(root, &[])
+}
+
+fn run_with(root: &Path, page_args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_tranche"))
         .arg("--root")
         .arg(root)
         .arg("page")
+        .args(page_args)
         .output()
         .expect("the tranche binary runs")
 }
@@ -99,6 +105,152 @@ fn a_page_renders_from_consistent_inputs() {
         rows.iter().any(|row| row["title"] == title.as_str()),
         "the expected PR is in the payload: {title}"
     );
+    assert!(
+        !root.path().join("docs/data/report.json").exists(),
+        "standalone JSON stays opt-in"
+    );
+    assert!(
+        !root.path().join("docs/data/report.xlsx").exists(),
+        "Excel stays opt-in"
+    );
+}
+
+#[test]
+fn standalone_json_export_carries_the_bound_report_and_grouping_context() {
+    let root = root();
+    let output = run_with(root.path(), &["--export-json"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let path = root.path().join("docs/data/report.json");
+    let text = fs::read_to_string(&path).expect("the standalone export reads");
+    let export: serde_json::Value = serde_json::from_str(&text).expect("valid JSON");
+    let repository = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .and_then(Path::parent)
+        .expect("nested in the repository");
+    let schema_text = fs::read_to_string(repository.join("docs/page-export.schema.json"))
+        .expect("the published schema reads");
+    let schema: serde_json::Value = serde_json::from_str(&schema_text).expect("valid schema JSON");
+    let validator = jsonschema::validator_for(&schema).expect("the schema compiles");
+    let errors: Vec<String> = validator
+        .iter_errors(&export)
+        .map(|error| error.to_string())
+        .collect();
+    assert!(errors.is_empty(), "schema validation errors: {errors:?}");
+    assert_eq!(export["format"], "tranche.page-export");
+    assert_eq!(export["schema_version"], 1);
+    assert_eq!(export["repository"], "omacom/omarchy");
+    assert_eq!(export["report_binding"].as_str().unwrap().len(), 64);
+    let rows = export["pull_requests"].as_array().expect("PR rows");
+    assert!(!rows.is_empty(), "the export carries PR-level data");
+    let title = a_fixture_title();
+    assert!(rows.iter().any(|row| row["title"] == title.as_str()));
+    assert!(
+        !export["groups"]["confirmed_groups"]
+            .as_array()
+            .expect("confirmed groups")
+            .is_empty(),
+        "the export carries grouping information"
+    );
+    assert_eq!(export["batches_available"], true);
+    assert!(
+        !export["batches"].as_array().expect("batches").is_empty(),
+        "the fixture includes batch information"
+    );
+    assert!(
+        !export["parked"]["members"]
+            .as_array()
+            .expect("parked members")
+            .is_empty(),
+        "the fixture includes park information"
+    );
+    assert!(!root.path().join("docs/data/report.xlsx").exists());
+}
+
+#[test]
+fn excel_export_is_a_standalone_workbook_and_can_be_selected_alone() {
+    let root = root();
+    let output = run_with(root.path(), &["--export-xlsx"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let path = root.path().join("docs/data/report.xlsx");
+    let bytes = fs::read(&path).expect("the workbook reads");
+    assert!(
+        bytes.starts_with(b"PK\x03\x04"),
+        "an xlsx file is a ZIP archive"
+    );
+    assert!(bytes.len() > 1_000, "the workbook contains report data");
+
+    let mut archive = zip::ZipArchive::new(fs::File::open(path).expect("the workbook opens"))
+        .expect("the workbook ZIP is valid");
+    let mut workbook_xml = String::new();
+    archive
+        .by_name("xl/workbook.xml")
+        .expect("workbook metadata")
+        .read_to_string(&mut workbook_xml)
+        .expect("workbook metadata reads");
+    for sheet in ["Report", "PRs", "Groups", "Batches", "Parked"] {
+        assert!(
+            workbook_xml.contains(&format!("name=\"{sheet}\"")),
+            "sheet {sheet}"
+        );
+    }
+    let mut shared_strings = String::new();
+    archive
+        .by_name("xl/sharedStrings.xml")
+        .expect("workbook strings")
+        .read_to_string(&mut shared_strings)
+        .expect("workbook strings read");
+    for value in [
+        "report_binding",
+        "number",
+        "title",
+        "kind",
+        "review_prompt",
+        "unblock",
+        "B001",
+        "C001",
+        "same_change_hold",
+    ] {
+        assert!(shared_strings.contains(value), "workbook contains {value}");
+    }
+    for index in 1..=5 {
+        let mut sheet_xml = String::new();
+        archive
+            .by_name(&format!("xl/worksheets/sheet{index}.xml"))
+            .expect("worksheet XML")
+            .read_to_string(&mut sheet_xml)
+            .expect("worksheet XML reads");
+        assert!(
+            sheet_xml.contains("<autoFilter ref=\""),
+            "sheet {index} is filterable"
+        );
+        assert!(
+            sheet_xml.contains("ySplit=\"1\""),
+            "sheet {index} freezes its header"
+        );
+    }
+    assert!(!root.path().join("docs/data/report.json").exists());
+}
+
+#[test]
+fn both_export_formats_can_be_selected_together() {
+    let root = root();
+    let output = run_with(root.path(), &["--export-json", "--export-xlsx"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(root.path().join("docs/data/report.json").is_file());
+    assert!(root.path().join("docs/data/report.xlsx").is_file());
 }
 
 #[test]
@@ -126,7 +278,7 @@ fn a_report_that_no_longer_describes_its_inputs_stops_the_render() {
     parsed["report_binding"] = serde_json::json!("0000");
     fs::write(&summary, serde_json::to_string(&parsed).expect("encode")).expect("write");
 
-    let output = run(root.path());
+    let output = run_with(root.path(), &["--export-json", "--export-xlsx"]);
     assert!(!output.status.success(), "a foreign binding refuses");
     assert!(
         String::from_utf8_lossy(&output.stderr).contains("rerun cluster"),
@@ -137,6 +289,8 @@ fn a_report_that_no_longer_describes_its_inputs_stops_the_render() {
         !root.path().join("docs/data/workbench.json").exists(),
         "nothing was written"
     );
+    assert!(!root.path().join("docs/data/report.json").exists());
+    assert!(!root.path().join("docs/data/report.xlsx").exists());
 }
 
 #[test]
