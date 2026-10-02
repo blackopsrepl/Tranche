@@ -320,10 +320,10 @@ One coherent iteration produces one release tag. `VERSION` and
 `commit-and-tag-version` and Ruff — no runtime Python dependencies.
 
 ```bash
-git pull --ff-only origin main
-make release-dry-run        # offline checks, clean-main gate, preview; no writes
+git pull --ff-only origin master
+make release-dry-run        # offline checks, clean-master gate, preview; no writes
 npx commit-and-tag-version --release-as minor   # or plain for the computed bump
-git push --follow-tags origin main
+git push --follow-tags origin master
 ```
 
 The pushed `v*` tag triggers the `release` workflow
@@ -333,7 +333,7 @@ changelog. A tag that predates the workflow (or any existing tag) can be
 published retroactively through the same path:
 
 ```bash
-gh workflow run release --ref main -f tag=v0.8.1
+gh workflow run release --ref master -f tag=v0.8.1
 ```
 
 Verify afterwards with `gh release list` — the releases page, not the tag

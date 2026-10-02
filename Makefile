@@ -124,7 +124,7 @@ publish: banner
 	@git add -A docs/ && \
 		git diff --cached --quiet && \
 			printf "$(YELLOW)Nothing new to publish$(RESET)\n\n" || \
-		( git commit -qm "chore: refresh triage report" && git push -q origin main && \
+		( git commit -qm "chore: refresh triage report" && git push -q origin master && \
 		  printf "$(GREEN)$(CHECK) Pushed — Pages rebuilds at $(CYAN)$(LIVE_URL)$(RESET)\n" && \
 		  printf "$(GRAY)Watch: gh api repos/$(REPO)/pages --jq .status$(RESET)\n\n" )
 
@@ -170,7 +170,7 @@ print-interpreter:
 
 release-check: check
 	@node --check .versionrc.js
-	@test "$$(git branch --show-current)" = main || (printf 'Release from main only.\n' >&2; exit 1)
+	@test "$$(git branch --show-current)" = master || (printf 'Release from master only.\n' >&2; exit 1)
 	@test -z "$$(git status --porcelain)" || (printf 'Commit or remove working-tree changes before releasing.\n' >&2; exit 1)
 
 release-dry-run: release-check
@@ -200,7 +200,7 @@ help: banner
 	@/bin/echo -e ""
 	@/bin/echo -e "$(CYAN)$(BOLD)Release:$(RESET)"
 	@/bin/echo -e "  $(GREEN)make check$(RESET)         - Offline tests, Ruff, syntax and whitespace"
-	@/bin/echo -e "  $(GREEN)make release-dry-run$(RESET) - Preview version/changelog on clean main"
+	@/bin/echo -e "  $(GREEN)make release-dry-run$(RESET) - Preview version/changelog on clean master"
 	@/bin/echo -e "  $(GREEN)make release$(RESET)       - Gate, bump VERSION, generate changelog, commit + tag"
 	@/bin/echo -e ""
 	@/bin/echo -e "$(CYAN)$(BOLD)Other:$(RESET)"
