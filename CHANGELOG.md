@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.2](https://github.com/blackopsrepl/Tranche/compare/v0.8.1...v0.8.2) (2026-10-02)
+
+
+### Features
+
+* **evidence:** add a bounded GET-only GitHub read transport ([2e267fb](https://github.com/blackopsrepl/Tranche/commit/2e267fb9ca38f257f9947250569caf7ae704d8d7))
+* **evidence:** capture, inspect and export a batch's native evidence ([f6e1116](https://github.com/blackopsrepl/Tranche/commit/f6e111637686c694757047b12042c0e53c95f4dc))
+
+
+### Bug Fixes
+
+* **evidence:** correct pagination, writer exclusion and revision checks ([f262be3](https://github.com/blackopsrepl/Tranche/commit/f262be3aeb0b1ada581fc5392192fca999b8aa29))
+
 ## [0.8.1](https://github.com/blackopsrepl/Tranche/compare/v0.8.0...v0.8.1) (2026-10-01)
 
 ### Bug Fixes
