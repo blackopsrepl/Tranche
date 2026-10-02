@@ -4,10 +4,11 @@ These are the conventions every change here follows. They are short on purpose:
 each one exists because breaking it caused a real defect, and the reason is stated
 so a later reader can tell whether the rule still applies.
 
-## 1. No source file reaches 300 lines
+## 1. No source file reaches 500 lines
 
 Split by responsibility into sibling modules. A module that needs three concepts is
-three modules. This applies to every crate's `src/`, not to tests.
+three modules. This applies to every crate's `src/`, not to tests. Preserve the
+existing module layout; use the 500-line limit for future additions and changes.
 
 The limit is not cosmetic. A file that has grown past it has almost always taken on
 a second job, and the two jobs then have to be read together to understand either.

@@ -10,6 +10,16 @@ never includes credentials in its reports.
 
 **Live report:** <https://vdistefano.studio/Tranche/>
 
+## Screenshots
+
+The published workbench: searchable PRs, review queues and model risk hints.
+
+![Tranche webpage showing the captured PR corpus and review queues](docs/assets/tranche-workbench.png)
+
+The native CLI: pipeline commands, evidence tools and the complementary MCP server.
+
+![Tranche CLI help in a real terminal](docs/assets/tranche-cli.png)
+
 Tranche exists because the Omarchy PR backlog hit 2,800 open PRs growing by
 ~100 a day. DHH stood up a human triage team on 2026-09-12
 ([x.com/dhh/status/2098755120540393908](https://x.com/dhh/status/2098755120540393908))
@@ -201,25 +211,32 @@ make check         # tests plus format, clippy and whitespace
 make cli-install   # build and install the binary from this checkout
 ```
 
-Two conventions hold across the codebase: no source file reaches 300 lines, and
-tests live only in `tests/`, named for the outcome they protect rather than the
-module they exercise. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains the
-layout and what the on-disk formats guarantee.
+Three conventions hold across the codebase:
+- No source file reaches **500 lines** for future additions and changes; the
+  existing module layout stays as it is.
+- `mod.rs` and `lib.rs` contain module declarations and re-exports only, no code.
+- Tests live only in `tests/`, named for the outcome they protect rather than the
+  module they exercise.
+
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains the layout and what the
+on-disk formats guarantee.
 
 CI runs the same gate on every push and pull request, on GitHub and on the local
 Forgejo. A release carries the built binary, not just a tag.
 
 ## Versioned releases
 
-One coherent iteration produces one release tag. `VERSION` and `CHANGELOG.md` are
+One coherent iteration produces one release tag. `VERSION`, the Cargo workspace
+version, the two Tranche entries in `Cargo.lock`, and `CHANGELOG.md` are
 owned by [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version)
 (`.versionrc.js`); never edit them by hand.
 
 ```bash
 git pull --ff-only origin master
 make release-dry-run        # offline checks, clean-master gate, preview; no writes
-npx commit-and-tag-version --release-as minor   # or plain for the computed bump
+make release               # compute the bump, update all versions, commit + tag
 git push --follow-tags origin master
+git push --follow-tags forgejo master
 ```
 
 The pushed `v*` tag triggers the `release` workflow
@@ -237,31 +254,12 @@ Verify with `gh release list` — the releases page, not the tag list, is what
 people see. Releases version the code, not the freshness or correctness of
 historical model judgments.
 
-## FAQ
-
-**Does Tranche merge or close anything?**
-No. The pipeline is read-only toward GitHub. Nothing claims, reserves or approves
-work.
-
-**What does "duplicate" mean here?**
-A Jev judgment that two PRs propose the same underlying change, with the
-model-consistency checks described above. It is a merge-review lead, not a
-verified duplicate — always compare sources before closing anything, and note
-that PR age never selects a survivor.
-
-**Why is a risk score wrong?**
-Because it judges `title + body + diffstat` only. It never reads patches, test
-results or CI. Treat scores as sorting hints for human review, and treat `unknown`
-(null) as unknown — the pipeline never fakes a zero.
-
-**Do I need a Jev key to try this?**
-Not for `fetch`, `cluster`, `batches`, `page`, `info` or the tests. Only `judge`
-and `dupes` call the model.
-
-**Which commands run offline?**
-`cluster`, `batches`, `info` and `page`. `fetch` needs `gh` and the network;
-`judge` and `dupes` need the model. `refresh` and `all` run the whole set, so
-they need both.
+The Forgejo mirror at <http://vigilance:3002/blackopsrepl/Tranche> has its own
+tag-triggered workflow (`.forgejo/workflows/release.yml`). Publish the same master
+commit and tag to both remotes. Verify the Forgejo release page as well: each
+release must contain the Linux archive and its SHA-256 checksum, and the packaged
+binary must report the tag's version. `fork` is a contributor's repository, not a
+publication target.
 
 ## The MCP surface
 
@@ -269,7 +267,7 @@ they need both.
 transport, so any MCP client can spawn it:
 
 ```json
-{"tranche": {"command": "tranche", "args": ["mcp", "--root", "/path/to/checkout"]}}
+{"mcpServers": {"tranche": {"command": "tranche", "args": ["--root", "/path/to/checkout", "mcp"]}}}
 ```
 
 This is **not a second implementation**. The MCP surface and the CLI commands read
@@ -295,6 +293,34 @@ capped at 1 MiB, pagination at 100, and unknown tools are refused with `-32602`.
 The server re-reads and re-validates the report on every call and fingerprints the
 input files before and after a read, so a report changing mid-request is refused
 rather than half-served.
+
+## FAQ
+
+**Does Tranche merge or close anything?**
+No. The pipeline is read-only toward GitHub. Nothing claims, reserves or approves
+work.
+
+**What does "duplicate" mean here?**
+A Jev judgment that two PRs propose the same underlying change, with the
+model-consistency checks described above. It is a merge-review lead, not a
+verified duplicate — always compare sources before closing anything, and note
+that PR age never selects a survivor.
+
+**Why is a risk score wrong?**
+Because it judges `title + body + diffstat` only. It never reads patches, test
+results or CI. Treat scores as sorting hints for human review, and treat `unknown`
+(null) as unknown — the pipeline never fakes a zero.
+
+**Do I need a Jev key to try this?**
+Not for `fetch`, `cluster`, `batches`, `page`, `info`, `mcp` or the tests. Only
+`judge` and `dupes` call the model.
+
+**Which commands run offline?**
+`cluster`, `batches`, `info` and `page`. `fetch` needs `gh` and the network;
+`judge` and `dupes` need the model. `refresh` fetches before running the pipeline;
+`all` runs judge, dupes, cluster and batches against the stored corpus, without
+fetching or rendering the page. `mcp` and evidence inspection are offline;
+evidence capture reads GitHub but calls no model.
 
 **A command printed "this operation is not implemented yet". Why?**
 No command does anymore; every verb runs.

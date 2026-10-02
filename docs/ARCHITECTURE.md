@@ -53,7 +53,8 @@ sorted). Both are load-bearing, and the crate documents them as such.
 
 ## Rules
 
-1. **No source file reaches 300 lines.** Split by responsibility into sibling
+1. **No source file reaches 500 lines.** Keep the existing module layout; split
+   future additions by responsibility into sibling
    modules; a module that needs three concepts is three modules. This applies to
    every crate's `src/`, not to tests.
 2. **Tests live only in `tests/`**, never in a `#[cfg(test)]` module inside a
