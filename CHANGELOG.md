@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.4](https://github.com/blackopsrepl/Tranche/compare/v0.8.3...v0.8.4) (2026-10-02)
+
+
+### Features
+
+* **cli:** add optional page report exports ([01aa614](https://github.com/blackopsrepl/Tranche/commit/01aa614ee38e033cf4c84e7fa161dbedb1b0b0b1))
+
+
+### Bug Fixes
+
+* **cli:** stabilize workbook export bytes ([459426e](https://github.com/blackopsrepl/Tranche/commit/459426e64e72f8ecd3dc98de476a52e5d70d8279))
+
 ## [0.8.3](https://github.com/blackopsrepl/Tranche/compare/v0.8.2...v0.8.3) (2026-10-02)
 
 

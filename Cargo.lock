@@ -1712,7 +1712,7 @@ dependencies = [
 
 [[package]]
 name = "tranche-cli"
-version = "0.8.3"
+version = "0.8.4"
 dependencies = [
  "clap",
  "jsonschema",
@@ -1728,7 +1728,7 @@ dependencies = [
 
 [[package]]
 name = "tranche-core"
-version = "0.8.3"
+version = "0.8.4"
 dependencies = [
  "libc",
  "regex",
