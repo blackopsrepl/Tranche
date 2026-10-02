@@ -3,8 +3,13 @@ use tranche_core::report::Root;
 use tranche_core::util::{atomic_write, indented_json};
 
 /// Write the versioned standalone JSON contract.
-pub(super) fn write(root: &Root, payload: &Value, report_binding: &str) -> Result<usize, String> {
-    let document = super::export_data::document(payload, report_binding);
+pub(super) fn write(
+    root: &Root,
+    payload: &Value,
+    report_binding: &str,
+    repository: &str,
+) -> Result<usize, String> {
+    let document = super::export_data::document(payload, report_binding, repository);
     let mut encoded = indented_json(&document).map_err(|error| error.to_string())?;
     encoded.push('\n');
     let path = root.docs_dir().join("data/report.json");

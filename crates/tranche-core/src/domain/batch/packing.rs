@@ -13,15 +13,21 @@ use super::park::park_state;
 use crate::domain::cluster::SECURITY_PRIORITY;
 use crate::domain::judge::Judgment;
 use crate::domain::pr::Prs;
+use crate::policy::Contract;
 
-/// Pack PRs into security-first batches of five, model-determined.
+/// Pack PRs into security-first batches of five.
+///
+/// The deployment's contract supplies the repository the batches bind to and
+/// the display name the reviewer prompts address.
 pub fn merge_batches(
     dupes: &Value,
     judgments: &HashMap<u64, Judgment>,
     prs: &Prs,
     dupes_digest: &str,
-    repository: &str,
+    contract: &Contract,
 ) -> Result<Value, String> {
+    let repository = contract.repository();
+    let subject = contract.batch_subject();
     let parks = park_state(dupes, judgments, prs);
 
     let security_count = |members: &[u64]| -> u64 {
@@ -219,7 +225,12 @@ pub fn merge_batches(
             "security_members": security,
             "average_risk": average_risk,
             "created": created,
-            "review_prompt": batch_review_prompt(members, &format!("B{ordinal:03}"), prs),
+            "review_prompt": batch_review_prompt(
+                members,
+                &format!("B{ordinal:03}"),
+                prs,
+                &subject,
+            ),
         }));
     }
     let security_batches = batches

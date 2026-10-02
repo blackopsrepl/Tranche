@@ -20,7 +20,8 @@ use tranche_core::domain::cluster::{cluster, render};
 use tranche_core::domain::dupe::current_pairs;
 use tranche_core::domain::judge::{Judgment, current_judgments};
 use tranche_core::domain::pr::load_prs;
-use tranche_core::report::{MODEL, REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 use tranche_core::util::{atomic_json, digest};
 
 /// How many PRs the slice keeps, and how many of those must be in a group.
@@ -32,15 +33,36 @@ fn main() {
         .and_then(|value| value.parse().ok())
         .unwrap_or(DEFAULT_SIZE);
     let root = Root::new(Path::new("."));
+    let contract = Contract::load(root.path()).expect("the deployment contract loads");
     let out = PathBuf::from("crates/tranche-core/tests/fixture");
     std::fs::create_dir_all(out.join("data/pages")).expect("fixture directories");
     std::fs::create_dir_all(out.join("out")).expect("fixture directories");
+    // The fixture is a deployment of one: the root contract is copied, so the
+    // committed slice carries the same policy it was cut under.
+    std::fs::copy(
+        root.path().join(Contract::FILE_NAME),
+        out.join(Contract::FILE_NAME),
+    )
+    .expect("the contract copies");
 
-    let corpus = load_prs(&root, REPOSITORY).expect("the local corpus loads");
-    let judgments = current_judgments(&root, &corpus, REPOSITORY, MODEL, false).expect("judgments");
-    let verdicts =
-        current_pairs(&root, &corpus, &judgments, REPOSITORY, MODEL, false).expect("verdicts");
-    let full = cluster(&corpus, &judgments, &verdicts, REPOSITORY, MODEL, false);
+    let repository = contract.repository().to_owned();
+    let model = contract.model().to_owned();
+    let judge_questions = contract.judge_questions().clone();
+    let pair_questions = contract.pair_questions().clone();
+    let corpus = load_prs(&root, &repository).expect("the local corpus loads");
+    let judgments = current_judgments(&root, &corpus, &repository, &model, &judge_questions, false)
+        .expect("judgments");
+    let verdicts = current_pairs(
+        &root,
+        &corpus,
+        &judgments,
+        &repository,
+        &model,
+        &pair_questions,
+        false,
+    )
+    .expect("verdicts");
+    let full = cluster(&corpus, &judgments, &verdicts, &contract, false);
 
     // Members of confirmed groups first: a slice of unrelated PRs would leave
     // the group and park paths untested.
@@ -95,26 +117,52 @@ fn main() {
     // Rebuild every artifact from the slice, so the fixture's `out/` is exactly
     // what this code produces for its inputs rather than copied bytes.
     let sliced = Root::new(&out);
-    let prs = load_prs(&sliced, REPOSITORY).expect("the slice loads");
+    let sliced_contract = Contract::load(sliced.path()).expect("the sliced contract loads");
+    let prs = load_prs(&sliced, &repository).expect("the slice loads");
     let judgments: HashMap<u64, Judgment> =
-        current_judgments(&sliced, &prs, REPOSITORY, MODEL, false).expect("slice judgments");
-    let verdicts =
-        current_pairs(&sliced, &prs, &judgments, REPOSITORY, MODEL, false).expect("slice verdicts");
-    let built = cluster(&prs, &judgments, &verdicts, REPOSITORY, MODEL, false);
+        current_judgments(&sliced, &prs, &repository, &model, &judge_questions, false)
+            .expect("slice judgments");
+    let verdicts = current_pairs(
+        &sliced,
+        &prs,
+        &judgments,
+        &repository,
+        &model,
+        &pair_questions,
+        false,
+    )
+    .expect("slice verdicts");
+    let built = cluster(&prs, &judgments, &verdicts, &sliced_contract, false);
 
     atomic_json(&out.join("out/clusters.json"), &built.clusters).expect("clusters");
     atomic_json(&out.join("out/dupes.json"), &built.dupes).expect("dupes");
-    std::fs::write(out.join("out/tranches.md"), render(&built, REPOSITORY)).expect("report");
+    std::fs::write(
+        out.join("out/tranches.md"),
+        render(&built, sliced_contract.repository()),
+    )
+    .expect("report");
     atomic_json(&out.join("out/summary.json"), &built.summary).expect("summary");
 
     let dupes_digest = digest(&built.dupes);
-    let batches = merge_batches(&built.dupes, &judgments, &prs, &dupes_digest, REPOSITORY)
-        .expect("the slice packs");
+    let batches = merge_batches(
+        &built.dupes,
+        &judgments,
+        &prs,
+        &dupes_digest,
+        &sliced_contract,
+    )
+    .expect("the slice packs");
     let parks = park_state(&built.dupes, &judgments, &prs);
     atomic_json(&out.join("out/batches.json"), &batches).expect("batches");
     atomic_json(
         &out.join("out/parked.json"),
-        &parked_payload(&parks, &prs, &judgments, &dupes_digest, REPOSITORY),
+        &parked_payload(
+            &parks,
+            &prs,
+            &judgments,
+            &dupes_digest,
+            sliced_contract.repository(),
+        ),
     )
     .expect("parked");
 

@@ -4,7 +4,8 @@ use serde_json::Value;
 use tranche_core::domain::pr::load_prs;
 use tranche_core::evidence::capture;
 use tranche_core::evidence::{Plan, select};
-use tranche_core::report::{REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 
 /// The capture a batch currently resolves to, if one exists.
 pub fn resume_target(
@@ -43,8 +44,11 @@ pub fn load_manifest(
             "expected --batch or --capture",
         ));
     };
+    let repository = Contract::load(root.path())
+        .map(|contract| contract.repository().to_owned())
+        .map_err(tranche_core::evidence::refuse)?;
     let corpus =
-        load_prs(root, REPOSITORY).map_err(|error| tranche_core::evidence::refuse(error.0))?;
+        load_prs(root, &repository).map_err(|error| tranche_core::evidence::refuse(error.0))?;
     let plan = Plan::read(root).map_err(|error| tranche_core::evidence::refuse(error.0))?;
     let selection = select(root, batch_id, &corpus, &plan)
         .map_err(|error| tranche_core::evidence::refuse(error.0))?;

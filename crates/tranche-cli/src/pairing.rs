@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 use serde_json::Value;
 use tranche_core::domain::dupe::{candidate_pairs, pair_cache, reusable_pair};
 use tranche_core::domain::pr::{Pr, Prs};
-use tranche_core::report::{MODEL, REPOSITORY, Root};
+use tranche_core::report::Root;
 
 /// PR number → the references it contributes as comparison candidates.
 ///
@@ -25,12 +25,20 @@ pub fn ref_index(prs: &Prs) -> HashMap<u64, Vec<u64>> {
 }
 
 /// The pairs worth asking about, best candidate first.
+///
+/// `categories` is the deployment's judge-policy category set, which decides
+/// what "same category" means when nominating pairs; `questions` is the pair
+/// policy whose bindings decide which stored verdicts are still current.
 pub fn outstanding(
     root: &Root,
     prs: &Prs,
     judgments: &HashMap<u64, tranche_core::domain::judge::Judgment>,
+    repository: &str,
+    model: &str,
+    questions: &Value,
+    categories: &Value,
 ) -> Result<Vec<(f64, u64, u64)>, String> {
-    let cache = pair_cache(root, prs, REPOSITORY, MODEL)?;
+    let cache = pair_cache(root, prs, repository, model, questions)?;
     let done: HashSet<(u64, u64)> = cache
         .iter()
         .filter(|(_, record)| {
@@ -38,7 +46,7 @@ pub fn outstanding(
         })
         .map(|(pair, _)| *pair)
         .collect();
-    let candidates = candidate_pairs(prs, judgments, Some(&ref_index(prs)));
+    let candidates = candidate_pairs(prs, judgments, Some(&ref_index(prs)), categories);
     let mut work: Vec<(f64, u64, u64)> = candidates
         .into_iter()
         .filter(|(pair, _)| !done.contains(pair))
@@ -69,5 +77,13 @@ pub fn judgments(
     root: &Root,
     prs: &Prs,
 ) -> Result<HashMap<u64, tranche_core::domain::judge::Judgment>, String> {
-    tranche_core::domain::judge::current_judgments(root, prs, REPOSITORY, MODEL, false)
+    let contract = tranche_core::policy::Contract::load(root.path())?;
+    tranche_core::domain::judge::current_judgments(
+        root,
+        prs,
+        contract.repository(),
+        contract.model(),
+        contract.judge_questions(),
+        false,
+    )
 }

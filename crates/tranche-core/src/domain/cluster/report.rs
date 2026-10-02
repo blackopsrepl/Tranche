@@ -12,6 +12,7 @@ use super::predicates::{escalated, review_candidate, risk_band, security_priorit
 use crate::domain::dupe::p_same;
 use crate::domain::judge::{Judgment, usage};
 use crate::domain::pr::{Pr, Prs};
+use crate::policy::Contract;
 use crate::util::digest;
 
 use super::binding::report_binding;
@@ -33,14 +34,18 @@ pub struct Clustered {
 }
 
 /// Build the report from the current judgments and verdicts.
+///
+/// The deployment's contract supplies the repository, the model and the
+/// question policy the report binds itself under.
 pub fn cluster(
     prs: &Prs,
     judgments: &HashMap<u64, Judgment>,
     verdicts: &[Value],
-    repository: &str,
-    model: &str,
+    contract: &Contract,
     allow_unbound: bool,
 ) -> Clustered {
+    let repository = contract.repository();
+    let model = contract.model();
     let (dupe_groups, review_groups) = duplicate_groups(verdicts);
     let mut in_group: HashSet<u64> = HashSet::new();
     for group in &dupe_groups {
@@ -112,7 +117,8 @@ pub fn cluster(
             "head_sha": pr.head_sha,
             "url": pr.url,
         });
-        let category = judgment.category();
+        let categories = contract.judge_questions()["category"]["criteria"].clone();
+        let category = judgment.category(&categories);
         let band = risk_band(risk);
         // The report's category order breaks count ties by first appearance:
         // the sort is stable over an object built in visit order.
@@ -230,7 +236,15 @@ pub fn cluster(
         "unjudged_or_stale": prs.len() - judgments.len(),
         "unbound_judgments": judgments.values().filter(|j| j.freshness() == "unbound").count(),
         "allow_unbound": allow_unbound,
-        "report_binding": report_binding(prs, judgments, verdicts, repository, model),
+        "report_binding": report_binding(
+            prs,
+            judgments,
+            verdicts,
+            repository,
+            model,
+            contract.judge_questions(),
+            contract.pair_questions(),
+        ),
         "dupe_groups": dupes["confirmed_groups"].as_array().map(Vec::len).unwrap_or(0),
         "review_groups": dupes["review_groups"].as_array().map(Vec::len).unwrap_or(0),
         "uncertain_pairs": dupes["uncertain_pairs"].as_array().map(Vec::len).unwrap_or(0),

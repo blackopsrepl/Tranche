@@ -11,7 +11,8 @@ use tranche_core::domain::cluster::report_binding;
 use tranche_core::domain::dupe::current_pairs;
 use tranche_core::domain::judge::{Judgment, current_judgments};
 use tranche_core::domain::pr::{Prs, load_prs};
-use tranche_core::report::{MODEL, REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 use tranche_core::util::digest;
 
 use crate::commands::Outcome;
@@ -24,7 +25,12 @@ pub fn page(
     export_xlsx: bool,
     report: &mut dyn FnMut(&str),
 ) -> Outcome {
-    let corpus: Prs = match load_prs(root, REPOSITORY) {
+    let contract = match Contract::load(root.path()) {
+        Ok(contract) => contract,
+        Err(error) => return Outcome::refusal(error, 1),
+    };
+    let repository = contract.repository().to_owned();
+    let corpus: Prs = match load_prs(root, &repository) {
         Ok(corpus) => corpus,
         Err(error) => return Outcome::refusal(format!("corpus: {}", error.0), 1),
     };
@@ -33,13 +39,26 @@ pub fn page(
         Err(error) => return Outcome::refusal(format!("summary.json: {error}"), 1),
     };
     let allow_unbound = summary["allow_unbound"].as_bool() == Some(true);
-    let judgments: HashMap<u64, Judgment> =
-        match current_judgments(root, &corpus, REPOSITORY, MODEL, allow_unbound) {
-            Ok(judgments) => judgments,
-            Err(error) => return Outcome::refusal(format!("judgments: {error}"), 1),
-        };
-    let verdicts = match current_pairs(root, &corpus, &judgments, REPOSITORY, MODEL, allow_unbound)
-    {
+    let judgments: HashMap<u64, Judgment> = match current_judgments(
+        root,
+        &corpus,
+        &repository,
+        contract.model(),
+        contract.judge_questions(),
+        allow_unbound,
+    ) {
+        Ok(judgments) => judgments,
+        Err(error) => return Outcome::refusal(format!("judgments: {error}"), 1),
+    };
+    let verdicts = match current_pairs(
+        root,
+        &corpus,
+        &judgments,
+        &repository,
+        contract.model(),
+        contract.pair_questions(),
+        allow_unbound,
+    ) {
         Ok(verdicts) => verdicts,
         Err(error) => return Outcome::refusal(format!("pairs: {error}"), 1),
     };
@@ -53,10 +72,18 @@ pub fn page(
     };
 
     // The report has to be the one these judgments produce.
-    let binding = report_binding(&corpus, &judgments, &verdicts, REPOSITORY, MODEL);
+    let binding = report_binding(
+        &corpus,
+        &judgments,
+        &verdicts,
+        &repository,
+        contract.model(),
+        contract.judge_questions(),
+        contract.pair_questions(),
+    );
     let recorded = &summary["output_digests"];
     if summary["format_version"].as_u64() != Some(2)
-        || summary["repo"].as_str() != Some(REPOSITORY)
+        || summary["repo"].as_str() != Some(repository.as_str())
         || summary["report_binding"].as_str() != Some(binding.as_str())
         || recorded["clusters.json"].as_str() != Some(digest(&clusters).as_str())
         || recorded["dupes.json"].as_str() != Some(digest(&dupes).as_str())
@@ -72,7 +99,7 @@ pub fn page(
     let batches = match read_json(&root.batches_path()) {
         Ok(batches) => {
             if batches["format_version"].as_u64() != Some(3)
-                || batches["repo"].as_str() != Some(REPOSITORY)
+                || batches["repo"].as_str() != Some(repository.as_str())
                 || batches["dupes_digest"].as_str() != recorded["dupes.json"].as_str()
             {
                 return Outcome::refusal(
@@ -92,7 +119,7 @@ pub fn page(
                 &corpus,
                 &judgments,
                 recorded["dupes.json"].as_str().unwrap_or(""),
-                REPOSITORY,
+                &repository,
             );
             if parked != expected {
                 return Outcome::refusal(
@@ -122,8 +149,9 @@ pub fn page(
         batches.as_ref(),
         parked.as_ref(),
         root,
+        &contract,
     );
-    let (html, json_bytes) = match super::writing::write(root, &built) {
+    let (html, json_bytes) = match super::writing::write(root, &built, &contract) {
         Ok(sizes) => sizes,
         Err(error) => return Outcome::refusal(error, 1),
     };
@@ -136,7 +164,7 @@ pub fn page(
         json_bytes / 1024
     );
     if export_json {
-        let bytes = match super::json_export::write(root, &built, &binding) {
+        let bytes = match super::json_export::write(root, &built, &binding, &repository) {
             Ok(bytes) => bytes,
             Err(error) => return Outcome::refusal(error, 1),
         };
@@ -147,7 +175,7 @@ pub fn page(
         ));
     }
     if export_xlsx {
-        let bytes = match super::xlsx_export::write(root, &built, &binding) {
+        let bytes = match super::xlsx_export::write(root, &built, &binding, &repository) {
             Ok(bytes) => bytes,
             Err(error) => return Outcome::refusal(error, 1),
         };

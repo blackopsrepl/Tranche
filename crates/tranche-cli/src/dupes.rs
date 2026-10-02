@@ -13,9 +13,9 @@ use serde_json::Value;
 use tranche_core::domain::dupe::{normalize_pair, pair_binding, reusable_pair};
 use tranche_core::domain::judge::usage as token_usage;
 use tranche_core::domain::pr::{Pr, Prs, load_prs};
-use tranche_core::domain::questions::pair_questions;
 use tranche_core::jev;
-use tranche_core::report::{MODEL, REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 
 use crate::pairing::{brief, outstanding, ref_index};
 
@@ -42,7 +42,18 @@ pub fn dupes(
     max_pairs: u64,
     report: &mut dyn FnMut(&str),
 ) -> Result<(usize, usize), String> {
-    let corpus: Prs = load_prs(root, REPOSITORY).map_err(|error| error.0)?;
+    let contract = Contract::load(root.path())?;
+    let repository = contract.repository().to_owned();
+    let model = contract.model().to_owned();
+    let questions = contract.pair_questions().clone();
+    // The normalizer checks a verdict's choice against the `sameness` criteria
+    // object, not the whole pair policy.
+    let criteria = questions
+        .get("sameness")
+        .and_then(|question| question.get("criteria"))
+        .cloned()
+        .unwrap_or(Value::Null);
+    let corpus: Prs = load_prs(root, &repository).map_err(|error| error.0)?;
     let judgments = crate::pairing::judgments(root, &corpus)?;
 
     let missing = corpus.len().saturating_sub(judgments.len());
@@ -52,12 +63,21 @@ pub fn dupes(
         ));
     }
 
-    let all = outstanding(root, &corpus, &judgments)?;
+    let categories = contract.judge_questions()["category"]["criteria"].clone();
+    let all = outstanding(
+        root,
+        &corpus,
+        &judgments,
+        &repository,
+        &model,
+        &questions,
+        &categories,
+    )?;
     let selected: Vec<(f64, u64, u64)> = all.iter().take(max_pairs as usize).copied().collect();
     report(&format!(
         "{} candidate pairs to compare ({} already current)",
         all.len().min(max_pairs as usize),
-        cache_size(root, &corpus)
+        cache_size(root, &corpus, &repository, &model, &questions)
     ));
     if selected.is_empty() {
         return Ok((0, 0));
@@ -69,12 +89,11 @@ pub fn dupes(
             // A candidate can go stale between selection and the call: a PR
             // closed and was refetched out of the corpus.
             let (left, right) = (corpus.get(*a)?, corpus.get(*b)?);
-            Some(job(left, right, *score))
+            Some(job(left, right, *score, &repository, &model, &questions))
         })
         .collect();
 
-    let questions = pair_questions();
-    let outcomes = ask_all(&jobs, &questions);
+    let outcomes = ask_all(&jobs, &questions, &model);
 
     let mut errors = Vec::new();
     let mut written = 0usize;
@@ -92,7 +111,7 @@ pub fn dupes(
     for (job, outcome) in jobs.iter().zip(outcomes) {
         match outcome {
             Ok(answer) => {
-                let record = normalize_pair(&record_for(job, &answer));
+                let record = normalize_pair(&record_for(job, &answer, &model), &criteria);
                 let line = serde_json::to_string(&record)
                     .map_err(|error| format!("cannot encode a verdict: {error}"))?;
                 writeln!(stream, "{line}")
@@ -118,8 +137,14 @@ pub fn dupes(
 }
 
 /// How many stored verdicts are still current, for the progress line.
-fn cache_size(root: &Root, corpus: &Prs) -> usize {
-    tranche_core::domain::dupe::pair_cache(root, corpus, REPOSITORY, MODEL)
+fn cache_size(
+    root: &Root,
+    corpus: &Prs,
+    repository: &str,
+    model: &str,
+    questions: &Value,
+) -> usize {
+    tranche_core::domain::dupe::pair_cache(root, corpus, repository, model, questions)
         .map(|cache| {
             cache
                 .values()
@@ -132,14 +157,21 @@ fn cache_size(root: &Root, corpus: &Prs) -> usize {
 }
 
 /// One comparison, ready to ask.
-fn job(left: &Pr, right: &Pr, similarity: f64) -> Job {
+fn job(
+    left: &Pr,
+    right: &Pr,
+    similarity: f64,
+    repository: &str,
+    model: &str,
+    questions: &Value,
+) -> Job {
     let (a, b) = (left.number, right.number);
     Job {
         a,
         b,
         similarity,
         state: serde_json::json!({"pr_a": brief(left), "pr_b": brief(right)}),
-        binding: pair_binding(left, right, REPOSITORY, MODEL),
+        binding: pair_binding(left, right, repository, model, questions),
     }
 }
 
@@ -147,7 +179,7 @@ fn job(left: &Pr, right: &Pr, similarity: f64) -> Job {
 ///
 /// The field set is a compatibility surface: `normalize_pair` reads these and the
 /// binding is the cache key.
-fn record_for(job: &Job, answer: &Value) -> Value {
+fn record_for(job: &Job, answer: &Value, model: &str) -> Value {
     let sameness = answer
         .get("answers")
         .and_then(|answers| answers.get("sameness"))
@@ -162,7 +194,7 @@ fn record_for(job: &Job, answer: &Value) -> Value {
         "probabilities": sameness.get("probabilities"),
         "usage": answer.get("usage").cloned().unwrap_or_else(|| serde_json::json!({})),
         "binding": job.binding,
-        "requested_model": MODEL,
+        "requested_model": model,
         "resolved_model": answer.get("model"),
         "request_id": answer.get("request_id"),
         "judged_at": judged_at(),
@@ -175,7 +207,7 @@ fn record_for(job: &Job, answer: &Value) -> Value {
 /// Each job's outcome is kept, so one failure does not lose the others. A
 /// rejected key stops the pass rather than spending it on requests that cannot
 /// succeed.
-fn ask_all(jobs: &[Job], questions: &Value) -> Vec<Result<Value, String>> {
+fn ask_all(jobs: &[Job], questions: &Value, model: &str) -> Vec<Result<Value, String>> {
     let outcomes: Mutex<Vec<Option<Result<Value, String>>>> = Mutex::new(vec![None; jobs.len()]);
     let fatal: Mutex<Option<String>> = Mutex::new(None);
     let next = AtomicUsize::new(0);
@@ -200,7 +232,7 @@ fn ask_all(jobs: &[Job], questions: &Value) -> Vec<Result<Value, String>> {
                     let index = next.fetch_add(1, Ordering::SeqCst);
                     let Some(job) = jobs.get(index) else { return };
                     let outcome = runtime
-                        .block_on(jev::ask(&job.state, questions, MODEL))
+                        .block_on(jev::ask(&job.state, questions, model))
                         .map_err(|error| error.to_string());
                     if let Err(message) = &outcome
                         && message.contains("401")

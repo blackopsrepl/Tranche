@@ -61,11 +61,23 @@ impl Verdicts {
 }
 
 /// The latest stored verdict per pair, for pairs whose members are both captured.
-pub fn current_verdicts(root: &Root, prs: &crate::domain::pr::Prs) -> Result<Verdicts, String> {
+///
+/// `questions` is the deployment's pair-question policy; a stored verdict's
+/// choice is checked against the `sameness` criteria inside it.
+pub fn current_verdicts(
+    root: &Root,
+    prs: &crate::domain::pr::Prs,
+    questions: &Value,
+) -> Result<Verdicts, String> {
     let path = root.pairs_path();
     if !path.exists() {
         return Ok(Verdicts::default());
     }
+    let criteria = questions
+        .get("sameness")
+        .and_then(|question| question.get("criteria"))
+        .cloned()
+        .unwrap_or(Value::Null);
     let text = std::fs::read_to_string(&path).map_err(|error| error.to_string())?;
     let mut verdicts = Verdicts::default();
     for line in text.lines() {
@@ -89,7 +101,7 @@ pub fn current_verdicts(root: &Root, prs: &crate::domain::pr::Prs) -> Result<Ver
         if pair.0 == pair.1 || prs.get(pair.0).is_none() || prs.get(pair.1).is_none() {
             continue;
         }
-        verdicts.insert(pair, normalize_pair(&record));
+        verdicts.insert(pair, normalize_pair(&record, &criteria));
     }
     Ok(verdicts)
 }
@@ -106,10 +118,11 @@ pub fn current_pairs(
     judgments: &HashMap<u64, Judgment>,
     repository: &str,
     model: &str,
+    questions: &Value,
     allow_unbound: bool,
 ) -> Result<Vec<Value>, String> {
     let mut published = Vec::new();
-    for (pair, record) in current_verdicts(root, prs)?.iter() {
+    for (pair, record) in current_verdicts(root, prs, questions)?.iter() {
         let (a, b) = *pair;
         if !judgments.contains_key(&a) || !judgments.contains_key(&b) {
             continue;
@@ -117,7 +130,10 @@ pub fn current_pairs(
         let (Some(pr_a), Some(pr_b)) = (prs.get(a), prs.get(b)) else {
             continue;
         };
-        let matches = pair_is_current(record, &pair_binding(pr_a, pr_b, repository, model));
+        let matches = pair_is_current(
+            record,
+            &pair_binding(pr_a, pr_b, repository, model, questions),
+        );
         let legacy = record.get("binding").is_none() && allow_unbound;
         if matches || legacy {
             let mut published_record = record.clone();
@@ -141,14 +157,18 @@ pub fn pair_cache(
     prs: &crate::domain::pr::Prs,
     repository: &str,
     model: &str,
+    questions: &Value,
 ) -> Result<HashMap<(u64, u64), Value>, String> {
     let mut cache = HashMap::new();
-    for (pair, record) in current_verdicts(root, prs)?.iter() {
+    for (pair, record) in current_verdicts(root, prs, questions)?.iter() {
         let (a, b) = *pair;
         let (Some(pr_a), Some(pr_b)) = (prs.get(a), prs.get(b)) else {
             continue;
         };
-        let matches = pair_is_current(record, &pair_binding(pr_a, pr_b, repository, model));
+        let matches = pair_is_current(
+            record,
+            &pair_binding(pr_a, pr_b, repository, model, questions),
+        );
         let mut stamped = record.clone();
         if let Some(object) = stamped.as_object_mut() {
             object.insert("a".to_owned(), json!(a));

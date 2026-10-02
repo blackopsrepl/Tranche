@@ -7,7 +7,7 @@
 
 mod support;
 
-use support::{MODEL, REPO, built, corpus, read, reconstructed};
+use support::{built, contract, corpus, read, reconstructed};
 use tranche_core::domain::cluster::cluster;
 use tranche_core::util::digest;
 
@@ -132,8 +132,8 @@ fn rebuilding_twice_reaches_the_same_bytes() {
     // the digests that gate every reader are meaningless.
     let root = corpus();
     let (prs, judgments, verdicts) = reconstructed(&root);
-    let first = cluster(&prs, &judgments, &verdicts, REPO, MODEL, false);
-    let second = cluster(&prs, &judgments, &verdicts, REPO, MODEL, false);
+    let first = cluster(&prs, &judgments, &verdicts, contract(), false);
+    let second = cluster(&prs, &judgments, &verdicts, contract(), false);
     assert_eq!(digest(&first.clusters), digest(&second.clusters));
     assert_eq!(digest(&first.dupes), digest(&second.dupes));
     assert_eq!(first.summary, second.summary);

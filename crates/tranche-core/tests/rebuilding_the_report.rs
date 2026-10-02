@@ -9,13 +9,19 @@ use tranche_core::domain::cluster::cluster;
 use tranche_core::domain::dupe::current_pairs;
 use tranche_core::domain::judge::current_judgments;
 use tranche_core::domain::pr::load_prs;
-use tranche_core::report::{REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 use tranche_core::util::digest;
 
-const MODEL: &str = "jev-latest";
-const CLUSTERS_DIGEST: &str = "8cddc06fc66c8123b960a44e7582770094e7cd348912a04e56a13787a7b4435e";
-const DUPES_DIGEST: &str = "d241a64a38b2cfe5ebe5d8242b29e12f49b50f420e2e694eb2180fc60cf4fe70";
-const REPORT_BINDING: &str = "d756202ba10f2e8a373c0a66b36ab23e745e42a22d8cd4ad97923d7eaa2ca661";
+fn contract() -> Contract {
+    Contract::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("nested in the repository"),
+    )
+    .expect("the deployment contract loads")
+}
 
 fn corpus() -> Root {
     Root::new(
@@ -26,24 +32,48 @@ fn corpus() -> Root {
     )
 }
 
+const CLUSTERS_DIGEST: &str = "8cddc06fc66c8123b960a44e7582770094e7cd348912a04e56a13787a7b4435e";
+const DUPES_DIGEST: &str = "d241a64a38b2cfe5ebe5d8242b29e12f49b50f420e2e694eb2180fc60cf4fe70";
+const REPORT_BINDING: &str = "d756202ba10f2e8a373c0a66b36ab23e745e42a22d8cd4ad97923d7eaa2ca661";
+
 fn rebuilt() -> (
     Root,
     tranche_core::domain::pr::Prs,
     std::collections::HashMap<u64, tranche_core::domain::judge::Judgment>,
     Vec<serde_json::Value>,
+    Contract,
 ) {
     let root = corpus();
-    let prs = load_prs(&root, REPOSITORY).expect("the capture loads");
-    let judgments = current_judgments(&root, &prs, REPOSITORY, MODEL, false).expect("judgments");
-    let verdicts = current_pairs(&root, &prs, &judgments, REPOSITORY, MODEL, false).expect("pairs");
-    (root, prs, judgments, verdicts)
+    let contract = contract();
+    let repository = contract.repository().to_owned();
+    let prs = load_prs(&root, &repository).expect("the capture loads");
+    let judgments = current_judgments(
+        &root,
+        &prs,
+        &repository,
+        contract.model(),
+        contract.judge_questions(),
+        false,
+    )
+    .expect("judgments");
+    let verdicts = current_pairs(
+        &root,
+        &prs,
+        &judgments,
+        &repository,
+        contract.model(),
+        contract.pair_questions(),
+        false,
+    )
+    .expect("pairs");
+    (root, prs, judgments, verdicts, contract)
 }
 
 #[test]
 #[ignore = "pins the digests of the local 111 MiB corpus"]
 fn the_cluster_output_matches_the_committed_report() {
-    let (_root, prs, judgments, verdicts) = rebuilt();
-    let report = cluster(&prs, &judgments, &verdicts, REPOSITORY, MODEL, false);
+    let (_root, prs, judgments, verdicts, contract) = rebuilt();
+    let report = cluster(&prs, &judgments, &verdicts, &contract, false);
     assert_eq!(digest(&report.clusters), CLUSTERS_DIGEST, "clusters.json");
     assert_eq!(digest(&report.dupes), DUPES_DIGEST, "dupes.json");
     assert_eq!(
@@ -56,8 +86,8 @@ fn the_cluster_output_matches_the_committed_report() {
 #[test]
 #[ignore = "pins the digests of the local 111 MiB corpus"]
 fn the_summary_counts_match_the_committed_report() {
-    let (_root, prs, judgments, verdicts) = rebuilt();
-    let summary = cluster(&prs, &judgments, &verdicts, REPOSITORY, MODEL, false).summary;
+    let (_root, prs, judgments, verdicts, contract) = rebuilt();
+    let summary = cluster(&prs, &judgments, &verdicts, &contract, false).summary;
     let counts = [
         ("prs_in_corpus", 2817),
         ("judged", 2817),
@@ -93,9 +123,10 @@ fn the_summary_counts_match_the_committed_report() {
 #[test]
 #[ignore = "pins the digests of the local 111 MiB corpus"]
 fn the_batch_plan_matches_the_committed_report() {
-    let (root, prs, judgments, verdicts) = rebuilt();
-    let report = cluster(&prs, &judgments, &verdicts, REPOSITORY, MODEL, false);
-    let batches = merge_batches(&report.dupes, &judgments, &prs, DUPES_DIGEST, REPOSITORY)
+    let (root, prs, judgments, verdicts, contract) = rebuilt();
+    let repository = contract.repository().to_owned();
+    let report = cluster(&prs, &judgments, &verdicts, &contract, false);
+    let batches = merge_batches(&report.dupes, &judgments, &prs, DUPES_DIGEST, &contract)
         .expect("batches pack");
     let committed = serde_json::from_str::<serde_json::Value>(
         &std::fs::read_to_string(root.batches_path()).expect("committed batches"),
@@ -138,6 +169,6 @@ fn the_batch_plan_matches_the_committed_report() {
 
     let parks = park_state(&report.dupes, &judgments, &prs);
     assert_eq!(parks.len(), 187, "parked PRs");
-    let parked = parked_payload(&parks, &prs, &judgments, DUPES_DIGEST, REPOSITORY);
+    let parked = parked_payload(&parks, &prs, &judgments, DUPES_DIGEST, &repository);
     assert_eq!(parked["parked"].as_u64(), Some(187), "park record count");
 }

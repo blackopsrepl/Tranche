@@ -53,7 +53,7 @@ pub fn pr_activity(pr: &Pr, record: Option<&Value>) -> Value {
 ///
 /// Deterministic, self-contained text: it points at every PR of the batch and
 /// demands one unified proposal rather than per-PR verdicts.
-pub fn batch_review_prompt(members: &[u64], batch_id: &str, prs: &Prs) -> String {
+pub fn batch_review_prompt(members: &[u64], batch_id: &str, prs: &Prs, subject: &str) -> String {
     let listed = members
         .iter()
         .filter_map(|number| prs.get(*number))
@@ -61,7 +61,7 @@ pub fn batch_review_prompt(members: &[u64], batch_id: &str, prs: &Prs) -> String
         .collect::<Vec<_>>()
         .join("\n");
     format!(
-        "You are reviewing Omarchy pre-release batch {batch_id} ({} PRs to be merged together as one tranche).\n\n\
+        "You are reviewing {subject} pre-release batch {batch_id} ({} PRs to be merged together as one tranche).\n\n\
          Pull requests in this batch:\n{listed}\n\n\
          Work through the batch methodically:\n\
          1. Read every PR fully — description, diff, and review comments. For PRs Jev flagged as the same change, verify they truly overlap and identify the strongest implementation of each.\n\

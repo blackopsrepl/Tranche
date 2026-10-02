@@ -4,14 +4,21 @@ use super::verdict::p_same;
 use crate::domain::judge::finite_json;
 
 /// Normalize a stored verdict to the shape the report reads.
-pub fn normalize_pair(record: &Value) -> Value {
+///
+/// `criteria` is the deployment's sameness choice set: a verdict naming a
+/// choice the policy does not define becomes `null` rather than being passed
+/// through.
+pub fn normalize_pair(record: &Value, criteria: &Value) -> Value {
     let mut record = finite_json(record);
     let Some(object) = record.as_object_mut() else {
         return record;
     };
-    let criteria = crate::domain::questions::sameness_criteria();
+    let choices: Vec<&str> = criteria
+        .as_object()
+        .map(|map| map.keys().map(String::as_str).collect())
+        .unwrap_or_default();
     let verdict = object.get("verdict").and_then(Value::as_str);
-    if !verdict.is_some_and(|value| criteria.contains(&value)) {
+    if !verdict.is_some_and(|value| choices.contains(&value)) {
         object.insert("verdict".to_owned(), Value::Null);
     }
     let mut probabilities = object

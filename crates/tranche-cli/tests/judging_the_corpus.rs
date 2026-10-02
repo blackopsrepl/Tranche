@@ -66,11 +66,49 @@ fn drain(stream: &mut TcpStream) {
     }
 }
 
+/// A minimal deployment contract for a synthetic root: just the identity and
+/// the question shape the loader and normalizer read.
+fn contract_file(root: &std::path::Path) {
+    let contract = serde_json::json!({
+        "version": 1,
+        "repository": "omacom/omarchy",
+        "model": "jev-latest",
+        "policy": {
+            "version": 1,
+            "judge": {
+                "category": {"type": "choice", "criteria": {"fix-misc": "a fix", "unclear": "unclear"}},
+                "risk": {"type": "score", "criteria": ["a", "b", "c", "d", "e"]},
+                "is_fix": {"type": "noul"},
+                "dupe_signal": {"type": "noul"},
+                "finished_form": {"type": "score", "criteria": ["a", "b", "c", "d"]},
+                "review_effort": {"type": "score", "criteria": ["a", "b", "c", "d"]},
+                "security_flag": {"type": "noul"}
+            },
+            "pair": {
+                "sameness": {
+                    "type": "choice",
+                    "criteria": {
+                        "same_change": "same",
+                        "related_but_different": "related",
+                        "unrelated": "unrelated"
+                    }
+                }
+            }
+        }
+    });
+    fs::write(
+        root.join("tranche.json"),
+        serde_json::to_string_pretty(&contract).expect("encode"),
+    )
+    .expect("contract");
+}
+
 /// A checkout holding a snapshot of two PRs.
 fn root_with_corpus() -> tempfile::TempDir {
     let root = tempfile::tempdir().expect("a root");
     let pages = root.path().join("data/pages");
     fs::create_dir_all(&pages).expect("pages");
+    contract_file(root.path());
     let items = serde_json::json!([
         {"number": 11, "title": "first", "body": "b", "head": {"sha": "a"}, "user": {"login": "octo"}},
         {"number": 22, "title": "second", "body": null, "head": {"sha": "b"}, "user": {"login": "octo"}},
@@ -199,6 +237,7 @@ fn a_fresh_pass_resets_the_log() {
 #[test]
 fn a_root_without_a_corpus_refuses_rather_than_judging_nothing() {
     let root = tempfile::tempdir().expect("a root");
+    contract_file(root.path());
     let stub = model();
     let output = run(root.path(), &stub.endpoint, &["judge"]);
     assert!(!output.status.success());

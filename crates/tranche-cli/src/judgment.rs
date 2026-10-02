@@ -15,9 +15,9 @@ use tranche_core::domain::judge::{
     Judgment, current_judgments, judgment_binding, normalize_judgment, reusable_judgment,
 };
 use tranche_core::domain::pr::{Pr, Prs, load_prs};
-use tranche_core::domain::questions::judge_questions;
 use tranche_core::jev;
-use tranche_core::report::{MODEL, REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 
 /// How many requests are in flight at once.
 const WORKERS: usize = 6;
@@ -42,7 +42,11 @@ pub fn judge(
     limit: Option<u64>,
     report: &mut dyn FnMut(&str),
 ) -> Result<(usize, usize), String> {
-    let corpus: Prs = load_prs(root, REPOSITORY).map_err(|error| error.0)?;
+    let contract = Contract::load(root.path())?;
+    let repository = contract.repository().to_owned();
+    let model = contract.model().to_owned();
+    let questions = contract.judge_questions().clone();
+    let corpus: Prs = load_prs(root, &repository).map_err(|error| error.0)?;
     if corpus.is_empty() {
         return Err(format!(
             "no captured PR membership under {}; fetch first",
@@ -53,7 +57,7 @@ pub fn judge(
     // Reusable means current, complete and bound: a record that is merely present
     // is not enough, or a question change would go unnoticed.
     let already: HashMap<u64, Judgment> = if resume {
-        current_judgments(root, &corpus, REPOSITORY, MODEL, false)?
+        current_judgments(root, &corpus, &repository, &model, &questions, false)?
             .into_iter()
             .filter(|(_, judgment)| reusable_judgment(judgment))
             .collect()
@@ -97,7 +101,7 @@ pub fn judge(
         .map(|pr| Job {
             number: pr.number,
             state: tranche_core::domain::pr::pr_state(pr),
-            binding: judgment_binding(pr, REPOSITORY, MODEL),
+            binding: judgment_binding(pr, &repository, &model, &questions),
             title: pr.title.clone(),
             evidence_digest: pr.evidence_digest.clone(),
             head_sha: pr.head_sha.clone(),
@@ -105,8 +109,7 @@ pub fn judge(
         })
         .collect();
 
-    let questions = judge_questions();
-    let outcomes = ask_all(&jobs, &questions);
+    let outcomes = ask_all(&jobs, &questions, &model);
 
     // Append in a deterministic order. The log's order is not digested, but an
     // unordered append makes a resumed pass hard to read back.
@@ -120,7 +123,7 @@ pub fn judge(
     for (job, outcome) in jobs.iter().zip(outcomes) {
         match outcome {
             Ok(answer) => {
-                let record = normalize_judgment(&record_for(job, &answer));
+                let record = normalize_judgment(&record_for(job, &answer, &model), &questions);
                 let line = serde_json::to_string(&record)
                     .map_err(|error| format!("cannot encode a judgment: {error}"))?;
                 writeln!(stream, "{line}")
@@ -149,7 +152,7 @@ pub fn judge(
 /// The field set is a compatibility surface: `normalize_judgment` reads these and
 /// the binding is the cache key, so a missing field makes a record unusable
 /// rather than merely incomplete.
-fn record_for(job: &Job, answer: &Value) -> Value {
+fn record_for(job: &Job, answer: &Value, model: &str) -> Value {
     serde_json::json!({
         "number": job.number,
         "title": job.title,
@@ -160,7 +163,7 @@ fn record_for(job: &Job, answer: &Value) -> Value {
         "source_digest": job.evidence_digest,
         "head_sha": job.head_sha,
         "updated_at": job.updated,
-        "requested_model": MODEL,
+        "requested_model": model,
         "judged_at": judged_at(),
         "resolved_model": answer.get("model"),
         "request_id": answer.get("request_id"),
@@ -172,7 +175,7 @@ fn record_for(job: &Job, answer: &Value) -> Value {
 /// Each job's outcome is kept, so one failure does not lose the others. A
 /// rejected key is fatal: it cannot succeed for any of the remaining jobs, so the
 /// pass stops rather than spending five hundred failed requests.
-fn ask_all(jobs: &[Job], questions: &Value) -> Vec<Result<Value, String>> {
+fn ask_all(jobs: &[Job], questions: &Value, model: &str) -> Vec<Result<Value, String>> {
     let outcomes: Mutex<Vec<Option<Result<Value, String>>>> = Mutex::new(vec![None; jobs.len()]);
     let fatal: Mutex<Option<String>> = Mutex::new(None);
     let next = std::sync::atomic::AtomicUsize::new(0);
@@ -197,7 +200,7 @@ fn ask_all(jobs: &[Job], questions: &Value) -> Vec<Result<Value, String>> {
                     let index = next.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     let Some(job) = jobs.get(index) else { return };
                     let outcome = runtime
-                        .block_on(jev::ask(&job.state, questions, MODEL))
+                        .block_on(jev::ask(&job.state, questions, model))
                         .map_err(|error| error.to_string());
                     if let Err(message) = &outcome
                         && message.contains("401")

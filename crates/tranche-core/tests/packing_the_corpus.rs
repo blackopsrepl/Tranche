@@ -10,7 +10,7 @@ mod support;
 use std::collections::BTreeMap;
 
 use serde_json::Value;
-use support::{Judgment, Prs, REPO, built, corpus, read};
+use support::{Judgment, Prs, built, contract, corpus, read};
 use tranche_core::domain::batch::{
     batch_plan_section, merge_batches, park_section, park_state, parked_payload,
 };
@@ -24,7 +24,8 @@ fn packed(
     prs: &Prs,
 ) -> (Value, BTreeMap<u64, Vec<String>>) {
     let dupes_digest = digest(&report.dupes);
-    let batches = merge_batches(&report.dupes, judgments, prs, &dupes_digest, REPO).expect("packs");
+    let batches =
+        merge_batches(&report.dupes, judgments, prs, &dupes_digest, contract()).expect("packs");
     (batches, park_state(&report.dupes, judgments, prs))
 }
 
@@ -34,7 +35,7 @@ fn the_human_report_reproduces_from_the_same_corpus() {
     let (prs, judgments, report) = built(&root);
     let (batches, parks) = packed(&report, &judgments, &prs);
 
-    let mut rendered = render(&report, REPO);
+    let mut rendered = render(&report, contract().repository());
     rendered.push_str(&batch_plan_section(&batches));
     rendered.push_str(&park_section(&parks, &prs));
 
@@ -52,7 +53,13 @@ fn the_batch_and_park_records_reproduce() {
     let root = corpus();
     let (prs, judgments, report) = built(&root);
     let (batches, parks) = packed(&report, &judgments, &prs);
-    let parked = parked_payload(&parks, &prs, &judgments, &digest(&report.dupes), REPO);
+    let parked = parked_payload(
+        &parks,
+        &prs,
+        &judgments,
+        &digest(&report.dupes),
+        contract().repository(),
+    );
 
     assert_eq!(digest(&batches), digest(&read(&root, "batches.json")));
     assert_eq!(digest(&parked), digest(&read(&root, "parked.json")));

@@ -32,6 +32,16 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Write a starter deployment contract for a repository.
+    Init {
+        /// The repository to review, as `owner/name`.
+        #[arg(value_name = "OWNER/REPO")]
+        repository: String,
+
+        /// Overwrite an existing contract.
+        #[arg(long)]
+        force: bool,
+    },
     /// Refresh the observed open-PR membership from GitHub.
     Fetch(Fetch),
     /// Judge each PR with one batched model call.

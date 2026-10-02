@@ -9,7 +9,7 @@ use std::time::Duration;
 use serde_json::Value;
 use tranche_core::domain::pr::validate_pr;
 use tranche_core::gh::{self, Transport};
-use tranche_core::report::{REPOSITORY, Root};
+use tranche_core::report::Root;
 use tranche_core::util::{atomic_json, digest};
 
 /// The API's maximum page size.
@@ -33,10 +33,12 @@ pub fn fetch(
 ) -> Result<Value, String> {
     let mut captured: Vec<Value> = Vec::new();
     let mut seen: HashSet<u64> = HashSet::new();
+    let contract = tranche_core::policy::Contract::load(root.path())?;
+    let repository = contract.repository().to_owned();
     let mut page = 1usize;
     loop {
         let url = format!(
-            "{}/repos/{REPOSITORY}/pulls?state=open&per_page={PER_PAGE}&page={page}",
+            "{}/repos/{repository}/pulls?state=open&per_page={PER_PAGE}&page={page}",
             gh::API
         );
         let items = gh::page(transport, &url).map_err(|error| error.to_string())?;
@@ -71,7 +73,7 @@ pub fn fetch(
 
     let snapshot = serde_json::json!({
         "version": SNAPSHOT_VERSION,
-        "repo": REPOSITORY,
+        "repo": repository,
         "items": captured,
         // The digest covers exactly the items, which is what `load_prs` re-checks.
         "digest": digest(&Value::Array(captured.clone())),

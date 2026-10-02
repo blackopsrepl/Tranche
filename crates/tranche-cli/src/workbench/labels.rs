@@ -1,9 +1,12 @@
-//! The categories the picker shows, and the labels they carry.
+//! The category labels the Omarchy deployment shipped with, kept as data.
 //!
-//! The order is the order the picker lists them, which is why they are one table
-//! rather than a lookup and a separate ordering.
+//! The engine no longer reads this table: `tranche.json`'s
+//! `display.category_labels` is the source the picker renders from. The file
+//! stays so the original labeling survives next to the emitted policy and a
+//! regenerated contract can be diffed against the deployment's first edition.
 
-/// Category keys to the labels the picker shows.
+/// Category keys to the labels the picker showed in the Omarchy deployment.
+#[allow(dead_code)]
 pub const CATEGORY_LABELS: [(&str, &str); 13] = [
     ("security-review", "Security (meta)"),
     ("install-setup", "Install & Setup"),

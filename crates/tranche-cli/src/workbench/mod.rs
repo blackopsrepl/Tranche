@@ -17,5 +17,4 @@ mod payload;
 mod writing;
 mod xlsx_export;
 
-pub use labels::CATEGORY_LABELS;
 pub use page::page;

@@ -35,9 +35,47 @@ fn run(root: &std::path::Path, path: &tempfile::TempDir) -> Output {
 /// One page of two PRs, in the shape the API returns and `validate_pr` accepts.
 const TWO_PRS: &str = r#"[{"number": 11, "title": "first", "body": "b", "head": {"sha": "a"}, "user": {"login": "octo"}}, {"number": 22, "title": "second", "body": null, "head": {"sha": "b"}, "user": {"login": "octo"}}]"#;
 
+/// A minimal deployment contract for a synthetic root: just the identity and
+/// the question shape the loader and normalizer read.
+fn contract_file(root: &std::path::Path) {
+    let contract = serde_json::json!({
+        "version": 1,
+        "repository": "omacom/omarchy",
+        "model": "jev-latest",
+        "policy": {
+            "version": 1,
+            "judge": {
+                "category": {"type": "choice", "criteria": {"fix": "a fix", "unclear": "unclear"}},
+                "risk": {"type": "score", "criteria": ["a", "b", "c", "d", "e"]},
+                "is_fix": {"type": "noul"},
+                "dupe_signal": {"type": "noul"},
+                "finished_form": {"type": "score", "criteria": ["a", "b", "c", "d"]},
+                "review_effort": {"type": "score", "criteria": ["a", "b", "c", "d"]},
+                "security_flag": {"type": "noul"}
+            },
+            "pair": {
+                "sameness": {
+                    "type": "choice",
+                    "criteria": {
+                        "same_change": "same",
+                        "related_but_different": "related",
+                        "unrelated": "unrelated"
+                    }
+                }
+            }
+        }
+    });
+    fs::write(
+        root.join("tranche.json"),
+        serde_json::to_string_pretty(&contract).expect("encode"),
+    )
+    .expect("contract");
+}
+
 #[test]
 fn fetching_writes_a_snapshot_the_corpus_loader_accepts() {
     let root = tempfile::tempdir().expect("a root");
+    contract_file(root.path());
     let path = fake_gh(&format!("printf '%s' '{TWO_PRS}'"));
     let output = run(root.path(), &path);
     assert!(
@@ -71,6 +109,7 @@ fn fetching_writes_a_snapshot_the_corpus_loader_accepts() {
 #[test]
 fn a_failed_capture_leaves_the_previous_snapshot_untouched() {
     let root = tempfile::tempdir().expect("a root");
+    contract_file(root.path());
     let pages = root.path().join("data/pages");
     fs::create_dir_all(&pages).expect("a pages directory");
     let existing = r#"{"version":1,"repo":"omacom/omarchy","items":[],"digest":"x"}"#;
@@ -93,6 +132,7 @@ fn a_failed_capture_leaves_the_previous_snapshot_untouched() {
 fn a_body_that_is_not_a_pr_list_refuses_rather_than_empty() {
     // An error document read as "no open PRs" would publish an empty corpus.
     let root = tempfile::tempdir().expect("a root");
+    contract_file(root.path());
     let path = fake_gh(r#"printf '%s' '{"message":"Not Found"}'"#);
     let output = run(root.path(), &path);
     assert!(!output.status.success(), "a non-array refuses");

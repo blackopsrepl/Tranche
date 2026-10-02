@@ -34,8 +34,13 @@ const PR_COLUMNS: &[&str] = &[
 ];
 
 /// Write a workbook with filterable tables for the report's review surfaces.
-pub(super) fn write(root: &Root, payload: &Value, report_binding: &str) -> Result<usize, String> {
-    let document = super::export_data::document(payload, report_binding);
+pub(super) fn write(
+    root: &Root,
+    payload: &Value,
+    report_binding: &str,
+    repository: &str,
+) -> Result<usize, String> {
+    let document = super::export_data::document(payload, report_binding, repository);
     let path = root.docs_dir().join("data/report.xlsx");
     let mut workbook = Workbook::new();
     // Keep generated workbooks byte-stable for identical report inputs.

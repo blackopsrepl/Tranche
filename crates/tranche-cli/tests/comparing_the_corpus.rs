@@ -85,6 +85,57 @@ fn root_with_pair() -> tempfile::TempDir {
     )
     .expect("snapshot");
 
+    // The deployment the synthetic corpus runs under: the same contract shape a
+    // real root carries, so the binary's contract-first path is what is tested.
+    let contract = serde_json::json!({
+        "version": 1,
+        "repository": "omacom/omarchy",
+        "model": "jev-latest",
+        "policy": {
+            "version": 1,
+            "judge": {
+                "category": {
+                    "type": "choice",
+                    "criteria": {
+                        "fix": "a fix",
+                        "chore": "a chore",
+                        "unclear": "cannot be placed"
+                    }
+                },
+                "risk": {
+                    "type": "score",
+                    "criteria": ["a", "b", "c", "d", "e"]
+                },
+                "is_fix": {"type": "noul"},
+                "dupe_signal": {"type": "noul"},
+                "finished_form": {
+                    "type": "score",
+                    "criteria": ["a", "b", "c", "d"]
+                },
+                "review_effort": {
+                    "type": "score",
+                    "criteria": ["a", "b", "c", "d"]
+                },
+                "security_flag": {"type": "noul"}
+            },
+            "pair": {
+                "sameness": {
+                    "type": "choice",
+                    "criteria": {
+                        "same_change": "same",
+                        "related_but_different": "related",
+                        "unrelated": "unrelated"
+                    }
+                }
+            }
+        }
+    });
+    fs::write(
+        root.path().join("tranche.json"),
+        serde_json::to_string_pretty(&contract).expect("encode"),
+    )
+    .expect("contract");
+
     // One judgment per PR, produced by the same code path the judge command uses.
     let root_handle = tranche_core::report::Root::new(root.path());
     let (_, endpoint) = ((), String::new());

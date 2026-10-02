@@ -6,7 +6,6 @@
 use serde_json::{Value, json};
 
 use crate::domain::pr::Pr;
-use crate::domain::questions::pair_questions;
 use crate::util::digest;
 
 /// Bumped only when the binding's meaning changes.
@@ -25,7 +24,9 @@ pub fn brief(pr: &Pr) -> Value {
 /// The binding digest for a pair, under today's evidence, policy and model.
 ///
 /// The pair is ordered by number, so a verdict recorded as (b, a) still matches.
-pub fn pair_binding(a: &Pr, b: &Pr, repository: &str, model: &str) -> String {
+/// `questions` is the pair-question value exactly as the deployment's policy
+/// stores it.
+pub fn pair_binding(a: &Pr, b: &Pr, repository: &str, model: &str, questions: &Value) -> String {
     let (first, second) = if a.number <= b.number { (a, b) } else { (b, a) };
     digest(&json!({
         "version": BINDING_VERSION,
@@ -33,7 +34,7 @@ pub fn pair_binding(a: &Pr, b: &Pr, repository: &str, model: &str) -> String {
         "model": model,
         "sources": [first.evidence_digest, second.evidence_digest],
         "state": [brief(first), brief(second)],
-        "questions": pair_questions(),
+        "questions": questions,
     }))
 }
 

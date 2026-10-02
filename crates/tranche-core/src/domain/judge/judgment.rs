@@ -7,7 +7,7 @@
 use serde_json::{Map, Value, json};
 
 use super::super::pr::{Pr, pr_state};
-use super::super::questions::{judge_questions, metric_ceiling};
+use super::super::questions::metric_ceiling;
 use crate::util::digest;
 
 /// The binding version every stored judgment is written under.
@@ -36,19 +36,17 @@ impl Judgment {
     }
 
     /// The chosen category, or `unclear` when the answer is unusable.
-    pub fn category(&self) -> String {
+    ///
+    /// `unclear` is a reserved label: the engine reads the category set from
+    /// the deployment's policy, but a judgment whose choice the policy does
+    /// not name is always reported as `unclear`, never dropped.
+    pub fn category(&self, categories: &Value) -> String {
         let answer = self.answers().get("category").and_then(Value::as_object);
         let chosen = answer
             .and_then(|answer| answer.get("choice"))
             .and_then(Value::as_str);
         match chosen {
-            Some(value)
-                if judge_questions()["category"]["criteria"]
-                    .get(value)
-                    .is_some() =>
-            {
-                value.to_owned()
-            }
+            Some(value) if categories.get(value).is_some() => value.to_owned(),
             _ => "unclear".to_owned(),
         }
     }
@@ -69,13 +67,17 @@ impl Judgment {
 }
 
 /// The binding digest for one PR under today's evidence, policy and model.
-pub fn judgment_binding(pr: &Pr, repository: &str, model: &str) -> String {
+///
+/// `questions` is the judge-question value exactly as the deployment's policy
+/// stores it; the digest covers that value, so the same wording produces the
+/// same binding whichever file it came from.
+pub fn judgment_binding(pr: &Pr, repository: &str, model: &str, questions: &Value) -> String {
     digest(&json!({
         "version": BINDING_VERSION,
         "repo": repository,
         "source": pr.evidence_digest,
         "state": pr_state(pr),
-        "questions": judge_questions(),
+        "questions": questions,
         "model": model,
     }))
 }

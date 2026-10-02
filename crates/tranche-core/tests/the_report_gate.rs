@@ -10,8 +10,19 @@ use tranche_core::domain::cluster::cluster;
 use tranche_core::domain::dupe::current_pairs;
 use tranche_core::domain::judge::current_judgments;
 use tranche_core::domain::pr::load_prs;
-use tranche_core::report::{BoundReport, Limits, MODEL, REPOSITORY, Root, input_digests, load};
+use tranche_core::policy::Contract;
+use tranche_core::report::{BoundReport, Limits, Root, input_digests, load};
 use tranche_core::util::{atomic_json, digest};
+
+fn contract() -> Contract {
+    Contract::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("nested in the repository"),
+    )
+    .expect("the deployment contract loads")
+}
 
 fn corpus() -> Root {
     Root::new(
@@ -172,11 +183,30 @@ fn load_produces_the_same_projection_the_builder_does() {
     // and the direct construction agree, so the check cannot pass by comparing a
     // value with itself.
     let root = corpus();
+    let contract = contract();
+    let repository = contract.repository().to_owned();
     let report = load(&root, &Limits::default()).expect("valid");
-    let prs = load_prs(&root, REPOSITORY).expect("capture");
-    let judgments = current_judgments(&root, &prs, REPOSITORY, MODEL, false).expect("judgments");
-    let pairs = current_pairs(&root, &prs, &judgments, REPOSITORY, MODEL, false).expect("pairs");
-    let rebuilt = cluster(&prs, &judgments, &pairs, REPOSITORY, MODEL, false);
+    let prs = load_prs(&root, &repository).expect("capture");
+    let judgments = current_judgments(
+        &root,
+        &prs,
+        &repository,
+        contract.model(),
+        contract.judge_questions(),
+        false,
+    )
+    .expect("judgments");
+    let pairs = current_pairs(
+        &root,
+        &prs,
+        &judgments,
+        &repository,
+        contract.model(),
+        contract.pair_questions(),
+        false,
+    )
+    .expect("pairs");
+    let rebuilt = cluster(&prs, &judgments, &pairs, &contract, false);
     assert_eq!(digest(&report.clusters), digest(&rebuilt.clusters));
     assert_eq!(digest(&report.dupes), digest(&rebuilt.dupes));
 }

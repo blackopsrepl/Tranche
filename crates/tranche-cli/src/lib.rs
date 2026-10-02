@@ -5,6 +5,7 @@ pub mod cli;
 pub mod commands;
 pub mod dupes;
 pub mod evidence;
+pub mod init;
 pub mod judgment;
 pub mod mcp;
 pub mod pairing;

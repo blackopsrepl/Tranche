@@ -10,9 +10,18 @@ use tranche_core::domain::judge::{
     current_judgments, judgment_binding, load_done, reusable_judgment,
 };
 use tranche_core::domain::pr::load_prs;
-use tranche_core::report::{REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 
-const MODEL: &str = "jev-latest";
+fn contract() -> Contract {
+    Contract::load(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("nested in the repository"),
+    )
+    .expect("the deployment contract loads")
+}
 
 fn corpus() -> Root {
     Root::new(
@@ -27,7 +36,9 @@ fn corpus() -> Root {
 #[ignore = "reads the local 111 MiB corpus; the committed fixture covers the rest"]
 fn judgment_bindings_match_the_stored_corpus() {
     let root = corpus();
-    let prs = load_prs(&root, REPOSITORY).expect("the capture loads");
+    let contract = contract();
+    let repository = contract.repository().to_owned();
+    let prs = load_prs(&root, &repository).expect("the capture loads");
     let expected = [
         (
             3507,
@@ -49,7 +60,12 @@ fn judgment_bindings_match_the_stored_corpus() {
     for (number, binding) in expected {
         let pr = prs.get(number).unwrap_or_else(|| panic!("PR {number}"));
         assert_eq!(
-            judgment_binding(pr, REPOSITORY, MODEL),
+            judgment_binding(
+                pr,
+                &repository,
+                contract.model(),
+                contract.judge_questions()
+            ),
             binding,
             "judgment binding for {number}"
         );
@@ -60,14 +76,24 @@ fn judgment_bindings_match_the_stored_corpus() {
 #[ignore = "reads the local 111 MiB corpus; the committed fixture covers the rest"]
 fn every_stored_judgment_is_still_current() {
     let root = corpus();
-    let prs = load_prs(&root, REPOSITORY).expect("the capture loads");
-    let stored = load_done(&root).expect("the log reads");
+    let contract = contract();
+    let repository = contract.repository().to_owned();
+    let prs = load_prs(&root, &repository).expect("the capture loads");
+    let stored = load_done(&root, contract.judge_questions()).expect("the log reads");
     assert_eq!(stored.len(), 2903, "records in the append-only log");
 
     // The whole corpus is judged under the current policy; a binding drift shows
     // up here as a collapse to zero, which is exactly the failure that would
     // re-bill the backlog.
-    let current = current_judgments(&root, &prs, REPOSITORY, MODEL, false).expect("judgments");
+    let current = current_judgments(
+        &root,
+        &prs,
+        &repository,
+        contract.model(),
+        contract.judge_questions(),
+        false,
+    )
+    .expect("judgments");
     assert_eq!(
         current.len(),
         2817,
@@ -82,8 +108,11 @@ fn every_stored_judgment_is_still_current() {
 #[ignore = "reads the local 111 MiB corpus; the committed fixture covers the rest"]
 fn pair_bindings_match_the_stored_corpus() {
     let root = corpus();
-    let prs = load_prs(&root, REPOSITORY).expect("the capture loads");
-    let verdicts = current_verdicts(&root, &prs).expect("the verdict log reads");
+    let contract = contract();
+    let repository = contract.repository().to_owned();
+    let prs = load_prs(&root, &repository).expect("the capture loads");
+    let verdicts =
+        current_verdicts(&root, &prs, contract.pair_questions()).expect("the verdict log reads");
     assert_eq!(verdicts.len(), 909, "distinct pairs with a stored verdict");
 
     let expected = [
@@ -104,13 +133,28 @@ fn pair_bindings_match_the_stored_corpus() {
         let pr_a = prs.get(a).unwrap_or_else(|| panic!("PR {a}"));
         let pr_b = prs.get(b).unwrap_or_else(|| panic!("PR {b}"));
         assert_eq!(
-            pair_binding(pr_a, pr_b, REPOSITORY, MODEL),
+            pair_binding(
+                pr_a,
+                pr_b,
+                &repository,
+                contract.model(),
+                contract.pair_questions()
+            ),
             binding,
             "pair binding for ({a}, {b})"
         );
         // The binding orders the pair, so a verdict recorded the other way round
         // still verifies.
-        assert_eq!(pair_binding(pr_b, pr_a, REPOSITORY, MODEL), binding);
+        assert_eq!(
+            pair_binding(
+                pr_b,
+                pr_a,
+                &repository,
+                contract.model(),
+                contract.pair_questions()
+            ),
+            binding
+        );
     }
 }
 
@@ -120,21 +164,42 @@ fn a_moved_policy_would_invalidate_every_judgment() {
     // The binding digests the question policy, which is why the policy is data
     // here rather than scattered through the code.
     let root = corpus();
-    let prs = load_prs(&root, REPOSITORY).expect("the capture loads");
+    let contract = contract();
+    let repository = contract.repository().to_owned();
+    let prs = load_prs(&root, &repository).expect("the capture loads");
     let pr = prs.get(13971).expect("PR 13971");
-    let baseline = judgment_binding(pr, REPOSITORY, MODEL);
+    let baseline = judgment_binding(
+        pr,
+        &repository,
+        contract.model(),
+        contract.judge_questions(),
+    );
     assert_ne!(
-        judgment_binding(pr, REPOSITORY, "some-other-model"),
+        judgment_binding(
+            pr,
+            &repository,
+            "some-other-model",
+            contract.judge_questions()
+        ),
         baseline
     );
-    assert_ne!(judgment_binding(pr, "other/repo", MODEL), baseline);
+    assert_ne!(
+        judgment_binding(
+            pr,
+            "other/repo",
+            contract.model(),
+            contract.judge_questions()
+        ),
+        baseline
+    );
 }
 
 #[test]
 #[ignore = "reads the local 111 MiB corpus; the committed fixture covers the rest"]
 fn normalization_keeps_unknowns_unknown() {
     let root = corpus();
-    let stored = load_done(&root).expect("the log reads");
+    let contract = contract();
+    let stored = load_done(&root, contract.judge_questions()).expect("the log reads");
     let record = stored.get(&13971).expect("PR 13971 was judged");
     let answers = record
         .get("answers")

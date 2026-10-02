@@ -15,6 +15,43 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 const KEY: &str = "jev-test-key-not-real";
 
+/// A minimal deployment contract for a synthetic root: just the identity and
+/// the question shape the loader and normalizer read.
+fn contract_file(root: &std::path::Path) {
+    let contract = serde_json::json!({
+        "version": 1,
+        "repository": "omacom/omarchy",
+        "model": "jev-latest",
+        "policy": {
+            "version": 1,
+            "judge": {
+                "category": {"type": "choice", "criteria": {"fix-misc": "a fix", "unclear": "unclear"}},
+                "risk": {"type": "score", "criteria": ["a", "b", "c", "d", "e"]},
+                "is_fix": {"type": "noul"},
+                "dupe_signal": {"type": "noul"},
+                "finished_form": {"type": "score", "criteria": ["a", "b", "c", "d"]},
+                "review_effort": {"type": "score", "criteria": ["a", "b", "c", "d"]},
+                "security_flag": {"type": "noul"}
+            },
+            "pair": {
+                "sameness": {
+                    "type": "choice",
+                    "criteria": {
+                        "same_change": "same",
+                        "related_but_different": "related",
+                        "unrelated": "unrelated"
+                    }
+                }
+            }
+        }
+    });
+    fs::write(
+        root.join("tranche.json"),
+        serde_json::to_string_pretty(&contract).expect("encode"),
+    )
+    .expect("contract");
+}
+
 /// A stub that answers both the model and GitHub, and counts each.
 struct Stubs {
     directory: tempfile::TempDir,
@@ -112,6 +149,7 @@ fn root_with_corpus() -> tempfile::TempDir {
     let root = tempfile::tempdir().expect("a root");
     let pages = root.path().join("data/pages");
     fs::create_dir_all(&pages).expect("pages");
+    contract_file(root.path());
     let items = serde_json::json!([
         {"number": 11, "title": "Fix panel crash on startup", "body": "a", "head": {"sha": "1".repeat(40)}, "user": {"login": "octo"}},
         {"number": 22, "title": "Fix panel crash on startup", "body": "b", "head": {"sha": "2".repeat(40)}, "user": {"login": "octo"}},

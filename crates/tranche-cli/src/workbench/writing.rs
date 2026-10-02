@@ -6,15 +6,42 @@
 //! and injected, so a title containing markup must not survive as markup.
 
 use serde_json::Value;
+use tranche_core::policy::Contract;
 use tranche_core::report::Root;
 
-use super::CATEGORY_LABELS;
-
 /// Write the page and its payload, and report the sizes.
-pub(super) fn write(root: &Root, payload: &Value) -> Result<(usize, usize), String> {
+///
+/// The contract's `display.category_labels` decides the picker's entries and
+/// their order — the order the labels are written in the file, which is the
+/// order the deployed policy was authored in.
+pub(super) fn write(
+    root: &Root,
+    payload: &Value,
+    contract: &Contract,
+) -> Result<(usize, usize), String> {
     let template = std::fs::read_to_string(root.template_path())
         .map_err(|error| format!("cannot read {}: {error}", root.template_path().display()))?;
-    let options: String = CATEGORY_LABELS
+    let defaults = [(
+        "security-review",
+        contract.display_str("security_label", "Security (meta)"),
+    )];
+    let mut labels: Vec<(String, String)> = defaults
+        .iter()
+        .map(|(key, label)| ((*key).to_owned(), label.clone()))
+        .collect();
+    if let Some(map) = contract
+        .display()
+        .get("category_labels")
+        .and_then(|map| map.as_object())
+    {
+        for (key, label) in map {
+            if let Some(label) = label.as_str() {
+                labels.push((key.clone(), label.to_owned()));
+            }
+        }
+    }
+    labels.push(("unknown".to_owned(), "Unknown".to_owned()));
+    let options: String = labels
         .iter()
         .map(|(key, label)| format!("<option value=\"{}\">{}</option>", html(key), html(label)))
         .collect();
@@ -22,7 +49,27 @@ pub(super) fn write(root: &Root, payload: &Value) -> Result<(usize, usize), Stri
     let page = template
         .replace("{{options}}", &options)
         .replace("{{count_commas}}", &commas(count))
-        .replace("{{count}}", &count.to_string());
+        .replace("{{count}}", &count.to_string())
+        .replace(
+            "{{title}}",
+            &html(&contract.display_str("title", "Tranche workbench")),
+        )
+        .replace("{{repository}}", &html(contract.repository()))
+        .replace(
+            "{{repo_url}}",
+            &html(&contract.display_str(
+                "repo_url",
+                &format!("https://github.com/{}", contract.repository()),
+            )),
+        )
+        .replace(
+            "{{source_url}}",
+            &html(&contract.display_str("source_url", "https://github.com/blackopsrepl/Tranche")),
+        )
+        .replace(
+            "{{sidebar_note}}",
+            &html(&contract.display_str("sidebar_note", "Review deliberately.")),
+        );
 
     let compact = serde_json::to_string(&payload).map_err(|error| error.to_string())?;
     let encoded = escape_json(&compact);

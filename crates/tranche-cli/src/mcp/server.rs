@@ -199,6 +199,13 @@ fn u64_arg(arguments: &serde_json::Map<String, Value>, key: &str) -> Option<u64>
 /// Load and gate the bound report, refusing a report that changed under the read.
 fn loaded_view(root: &tranche_core::report::Root) -> Result<View, ReportError> {
     let limits = tranche_core::report::Limits::default();
+    let contract = tranche_core::policy::Contract::load(root.path())
+        .map_err(|error| ReportError(format!("no usable deployment contract: {error}")))?;
+    let categories = contract.judge_questions()["category"]["criteria"]
+        .as_object()
+        .map(|criteria| criteria.keys().cloned().collect())
+        .unwrap_or_default();
+    let judge_category_map = contract.judge_questions()["category"]["criteria"].clone();
     let before =
         tranche_core::report::input_digests(root, &limits).map_err(|error| ReportError(error.0))?;
     let report = tranche_core::report::load(root, &limits).map_err(|error| ReportError(error.0))?;
@@ -212,6 +219,9 @@ fn loaded_view(root: &tranche_core::report::Root) -> Result<View, ReportError> {
         ));
     }
     Ok(View {
+        repository: contract.repository().to_owned(),
+        categories,
+        judge_category_map,
         dupes: report.dupes.clone(),
         batches: report.batches.clone(),
         parked: report.parked.clone(),

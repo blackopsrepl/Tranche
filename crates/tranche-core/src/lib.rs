@@ -8,5 +8,6 @@ pub mod domain;
 pub mod evidence;
 pub mod gh;
 pub mod jev;
+pub mod policy;
 pub mod report;
 pub mod util;

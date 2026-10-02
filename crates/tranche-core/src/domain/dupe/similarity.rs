@@ -16,11 +16,12 @@ pub fn lexical_pairs(
     refs: Option<&HashMap<u64, Vec<u64>>>,
     threshold: f64,
     jaccard_threshold: f64,
+    categories: &serde_json::Value,
 ) -> Vec<(f64, u64, u64)> {
     let mut by_category: HashMap<String, Vec<u64>> = HashMap::new();
     for (number, judgment) in judgments {
         by_category
-            .entry(judgment.category())
+            .entry(judgment.category(categories))
             .or_default()
             .push(*number);
     }
@@ -142,12 +143,16 @@ fn tokens(title: &str) -> HashSet<String> {
 }
 
 /// The pairs worth a model verdict, as `(a, b) -> similarity`.
+///
+/// `categories` is the deployment's category set from its judge policy; pairs
+/// are only nominated inside one category.
 pub fn candidate_pairs(
     prs: &crate::domain::pr::Prs,
     judgments: &HashMap<u64, Judgment>,
     refs: Option<&HashMap<u64, Vec<u64>>>,
+    categories: &serde_json::Value,
 ) -> HashMap<(u64, u64), f64> {
-    lexical_pairs(prs, judgments, refs, 0.72, 0.62)
+    lexical_pairs(prs, judgments, refs, 0.72, 0.62, categories)
         .into_iter()
         .map(|(score, a, b)| ((a, b), score))
         .collect()

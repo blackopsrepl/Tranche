@@ -12,7 +12,8 @@
 use serde_json::Value;
 use tranche_core::domain::dupe::candidate_pairs;
 use tranche_core::domain::pr::{Prs, load_prs};
-use tranche_core::report::{REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 
 use crate::commands::Outcome;
 use crate::pairing::{judgments, outstanding, ref_index};
@@ -91,7 +92,12 @@ pub fn refresh(
 
 /// What a refresh would do, writing nothing.
 fn plan(root: &Root, steps: &[&str], report: &mut dyn FnMut(&str)) -> Outcome {
-    let corpus: Prs = match load_prs(root, REPOSITORY) {
+    let contract = match Contract::load(root.path()) {
+        Ok(contract) => contract,
+        Err(error) => return Outcome::refusal(error, 1),
+    };
+    let categories = contract.judge_questions()["category"]["criteria"].clone();
+    let corpus: Prs = match load_prs(root, contract.repository()) {
         Ok(corpus) => corpus,
         Err(error) => return Outcome::refusal(format!("corpus: {}", error.0), 1),
     };
@@ -99,13 +105,22 @@ fn plan(root: &Root, steps: &[&str], report: &mut dyn FnMut(&str)) -> Outcome {
         Ok(judgments) => judgments,
         Err(error) => return Outcome::refusal(format!("judgments: {error}"), 1),
     };
-    let pending = match outstanding(root, &corpus, &judgments) {
+    let pending = match outstanding(
+        root,
+        &corpus,
+        &judgments,
+        contract.repository(),
+        contract.model(),
+        contract.pair_questions(),
+        &categories,
+    ) {
         Ok(pending) => pending,
         Err(error) => return Outcome::refusal(format!("pairs: {error}"), 1),
     };
     // The denominator is the candidate set before the current verdicts are
     // discounted, so "n of m" reads as work remaining out of all candidates.
-    let candidates = candidate_pairs(&corpus, &judgments, Some(&ref_index(&corpus))).len();
+    let candidates =
+        candidate_pairs(&corpus, &judgments, Some(&ref_index(&corpus)), &categories).len();
 
     report(&format!(
         "refresh plan ({}), no changes written:",

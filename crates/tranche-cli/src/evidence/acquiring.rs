@@ -9,7 +9,8 @@ use tranche_core::domain::pr::load_prs;
 use tranche_core::evidence::capture;
 use tranche_core::evidence::report;
 use tranche_core::evidence::{Plan, select};
-use tranche_core::report::{REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 
 use crate::commands::Outcome;
 
@@ -22,7 +23,11 @@ use tranche_core::evidence::capture::Stopped;
 /// `evidence capture`: validate a batch and acquire or resume its evidence.
 pub fn capture_evidence(root: &Root, args: &Capture, json_output: bool) -> Outcome {
     let say = |line: &str| println!("{line}");
-    let corpus = match load_prs(root, REPOSITORY) {
+    let contract = match Contract::load(root.path()) {
+        Ok(contract) => contract,
+        Err(error) => return Outcome::refusal(error, 1),
+    };
+    let corpus = match load_prs(root, contract.repository()) {
         Ok(corpus) => corpus,
         Err(error) => return Outcome::refusal(format!("corpus: {}", error.0), 1),
     };

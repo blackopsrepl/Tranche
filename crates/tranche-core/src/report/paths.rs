@@ -8,10 +8,9 @@ use std::path::{Path, PathBuf};
 
 use super::inputs::read_page_paths;
 
-/// The repository this checkout reviews. A report from any other repository is
-/// foreign, not merely different.
-pub const REPOSITORY: &str = "omacom/omarchy";
-/// The model alias recorded in bindings and provenance.
+/// Kept for provenance readers: the alias this deployment historically bound
+/// under. New code reads the model from the deployment contract.
+#[allow(dead_code)]
 pub const MODEL: &str = "jev-latest";
 /// Byte and file-count bounds for fingerprinting the bound inputs.
 #[derive(Debug, Clone, Copy)]

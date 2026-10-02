@@ -10,7 +10,6 @@ use serde_json::{Value, json};
 use tranche_core::domain::cluster::{escalated, review_candidate, security_priority};
 use tranche_core::domain::judge::Judgment;
 use tranche_core::domain::pr::Prs;
-use tranche_core::report::REPOSITORY;
 
 use super::super::error::ReportError;
 
@@ -26,6 +25,13 @@ approval. Patches, CI, reproductions and security have not been verified.";
 /// It owns its data: a long-lived server loads fresh per request and drops the old
 /// view whole, so memory tracks the report rather than the session.
 pub struct View {
+    /// The reviewed repository, from the deployment contract.
+    pub repository: String,
+    /// The judge policy's category keys, in policy order.
+    pub categories: Vec<String>,
+    /// The judge policy's category criteria object, which decides whether a
+    /// judgment's chosen category is one the policy still names.
+    pub judge_category_map: Value,
     pub dupes: Value,
     pub batches: Option<Value>,
     pub parked: Option<Value>,
@@ -39,7 +45,7 @@ pub struct View {
 impl View {
     pub(super) fn envelope(&self, data: Value) -> Result<Value, ReportError> {
         let mut result = json!({
-            "repo": REPOSITORY,
+            "repo": self.repository,
             "disclaimer": DISCLAIMER,
             "digests": self.identity,
         });
@@ -128,7 +134,7 @@ impl View {
                     "draft": pr.draft,
                     "answers": judgment.map(|j| j.answers().clone()).unwrap_or_default(),
                     "category": judgment
-                        .map(|j| j.category())
+                        .map(|j| j.category(&self.judge_category_map))
                         .unwrap_or_else(|| "unknown".to_owned()),
                     "risk": risk,
                     "finished_form": finished,
@@ -168,14 +174,6 @@ impl View {
     }
 
     pub fn judge_categories(&self) -> Vec<String> {
-        tranche_core::domain::questions::judge_questions()
-            .get("category")
-            .and_then(|category| category.get("criteria"))
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-            .filter_map(|criterion| criterion.get("name").and_then(Value::as_str))
-            .map(str::to_owned)
-            .collect()
+        self.categories.clone()
     }
 }

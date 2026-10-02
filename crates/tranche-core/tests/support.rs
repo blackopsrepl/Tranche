@@ -16,19 +16,27 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::OnceLock;
 
 use serde_json::Value;
 use tranche_core::domain::cluster::{Clustered, cluster};
 use tranche_core::domain::dupe::current_pairs;
 use tranche_core::domain::judge::current_judgments;
 use tranche_core::domain::pr::load_prs;
+use tranche_core::policy::Contract;
 use tranche_core::report::Root;
 
 pub use tranche_core::domain::judge::Judgment;
 pub use tranche_core::domain::pr::Prs;
 
-pub const REPO: &str = "omacom/omarchy";
-pub const MODEL: &str = "jev-latest";
+/// The fixture's deployment contract, read once per process.
+///
+/// The committed fixture carries its own `tranche.json`, so the tests exercise
+/// the same contract-first path every deployment takes.
+pub fn contract() -> &'static Contract {
+    static CONTRACT: OnceLock<Contract> = OnceLock::new();
+    CONTRACT.get_or_init(|| Contract::load(corpus().path()).expect("the fixture contract loads"))
+}
 
 /// How many PRs the committed fixture holds. Asserted so a truncated or
 /// regenerated fixture cannot quietly weaken every comparison below.
@@ -53,10 +61,27 @@ pub fn read(root: &Root, name: &str) -> Value {
 
 /// The fixture, judged and pair-compared.
 pub fn reconstructed(root: &Root) -> (Prs, HashMap<u64, Judgment>, Vec<Value>) {
-    let prs = load_prs(root, REPO).expect("the fixture loads");
-    let judgments = current_judgments(root, &prs, REPO, MODEL, false).expect("judgments bind");
-    let verdicts =
-        current_pairs(root, &prs, &judgments, REPO, MODEL, false).expect("verdicts bind");
+    let contract = contract();
+    let prs = load_prs(root, contract.repository()).expect("the fixture loads");
+    let judgments = current_judgments(
+        root,
+        &prs,
+        contract.repository(),
+        contract.model(),
+        contract.judge_questions(),
+        false,
+    )
+    .expect("judgments bind");
+    let verdicts = current_pairs(
+        root,
+        &prs,
+        &judgments,
+        contract.repository(),
+        contract.model(),
+        contract.pair_questions(),
+        false,
+    )
+    .expect("verdicts bind");
     // A read that returned nothing would satisfy every equality below.
     assert_eq!(
         prs.len(),
@@ -70,6 +95,6 @@ pub fn reconstructed(root: &Root) -> (Prs, HashMap<u64, Judgment>, Vec<Value>) {
 /// The report the fixture produces, with the inputs it was built from.
 pub fn built(root: &Root) -> (Prs, HashMap<u64, Judgment>, Clustered) {
     let (prs, judgments, verdicts) = reconstructed(root);
-    let report = cluster(&prs, &judgments, &verdicts, REPO, MODEL, false);
+    let report = cluster(&prs, &judgments, &verdicts, contract(), false);
     (prs, judgments, report)
 }

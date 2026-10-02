@@ -11,5 +11,5 @@ pub mod reading;
 
 pub use inputs::{input_digests, read_page_paths};
 pub use loading::{load, load_for_inspection};
-pub use paths::{BoundReport, Limits, MODEL, REPOSITORY, ReportError, Root};
+pub use paths::{BoundReport, Limits, MODEL, ReportError, Root};
 pub use reading::read_report;

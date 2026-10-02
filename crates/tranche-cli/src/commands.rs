@@ -44,6 +44,7 @@ pub fn run(cli: &Cli) -> Outcome {
     let root = Root::new(&cli.root);
     match &cli.command {
         Command::Evidence { command } => evidence(&root, command, cli.json),
+        Command::Init { repository, force } => crate::init::init(&root, repository, *force),
         Command::Cluster(args) => cluster_report(&root, args.allow_unbound, cli.json),
         Command::Batches => build_batches(&root, cli.json),
         Command::Info => print_info(&root, cli.json),

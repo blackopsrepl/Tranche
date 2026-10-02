@@ -11,18 +11,21 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::domain::judge::{BINDING_VERSION, Judgment};
 use crate::domain::pr::Prs;
-use crate::domain::questions::{judge_questions, pair_questions};
 
 /// The binding over the whole report: sources, judgments, pairs and policy.
 ///
 /// The maps here are keyed by PR number as an *integer*, so their key
-/// order is numeric, not lexicographic.
+/// order is numeric, not lexicographic. The policy enters as the two-question
+/// array `[judge, pair]`, exactly as the pipeline has always digested it; the
+/// values come from the deployment's contract rather than the compiler.
 pub fn report_binding(
     prs: &Prs,
     judgments: &HashMap<u64, Judgment>,
     verdicts: &[Value],
     repository: &str,
     model: &str,
+    judge_questions: &Value,
+    pair_questions: &Value,
 ) -> String {
     let sources: Map<String, Value> = prs
         .iter()
@@ -47,7 +50,7 @@ pub fn report_binding(
         "sources": sources,
         "judgments": ordered,
         "pairs": verdicts,
-        "questions": [judge_questions(), pair_questions()],
+        "questions": [judge_questions, pair_questions],
         "model": model,
     }))
 }

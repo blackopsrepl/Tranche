@@ -14,11 +14,17 @@ use tranche_core::domain::cluster::{cluster, render};
 use tranche_core::domain::dupe::current_pairs;
 use tranche_core::domain::judge::{Judgment, current_judgments};
 use tranche_core::domain::pr::{Prs, load_prs};
-use tranche_core::report::{MODEL, REPOSITORY, Root};
+use tranche_core::policy::Contract;
+use tranche_core::report::Root;
 use tranche_core::util::{atomic_json, digest};
 
 use crate::commands::Outcome;
 use crate::report_files::read_json;
+
+/// The deployment contract, or the refusal that explains why there is none.
+fn contract_of(root: &Root) -> Result<Contract, Outcome> {
+    Contract::load(root.path()).map_err(|error| Outcome::refusal(error, 1))
+}
 
 /// Pack the review candidates into pre-release batches and write the park record.
 ///
@@ -26,11 +32,17 @@ use crate::report_files::read_json;
 /// digests have to describe the `clusters.json` and `dupes.json` on disk, or the
 /// batches would be packed from a different observation than the one published.
 pub fn batches(root: &Root, json: bool) -> Outcome {
+    let contract = match contract_of(root) {
+        Ok(contract) => contract,
+        Err(outcome) => return outcome,
+    };
+    let repository = contract.repository().to_owned();
     let summary = match read_json(&root.summary_path()) {
         Ok(summary) => summary,
         Err(error) => return Outcome::refusal(format!("summary.json: {error}"), 1),
     };
-    if summary["format_version"].as_u64() != Some(2) || summary["repo"].as_str() != Some(REPOSITORY)
+    if summary["format_version"].as_u64() != Some(2)
+        || summary["repo"].as_str() != Some(repository.as_str())
     {
         return Outcome::refusal("unrecognized cluster observation; run cluster first", 1);
     }
@@ -57,16 +69,22 @@ pub fn batches(root: &Root, json: bool) -> Outcome {
     }
     let dupes_digest = digest(&dupes);
 
-    let corpus = match load_prs(root, REPOSITORY) {
+    let corpus = match load_prs(root, &repository) {
         Ok(corpus) => corpus,
         Err(error) => return Outcome::refusal(format!("corpus: {}", error.0), 1),
     };
-    let judgments: HashMap<u64, Judgment> =
-        match current_judgments(root, &corpus, REPOSITORY, MODEL, false) {
-            Ok(judgments) => judgments,
-            Err(error) => return Outcome::refusal(format!("judgments: {error}"), 1),
-        };
-    let batches = match merge_batches(&dupes, &judgments, &corpus, &dupes_digest, REPOSITORY) {
+    let judgments: HashMap<u64, Judgment> = match current_judgments(
+        root,
+        &corpus,
+        &repository,
+        contract.model(),
+        contract.judge_questions(),
+        false,
+    ) {
+        Ok(judgments) => judgments,
+        Err(error) => return Outcome::refusal(format!("judgments: {error}"), 1),
+    };
+    let batches = match merge_batches(&dupes, &judgments, &corpus, &dupes_digest, &contract) {
         Ok(batches) => batches,
         Err(error) => return Outcome::refusal(error, 1),
     };
@@ -81,7 +99,7 @@ pub fn batches(root: &Root, json: bool) -> Outcome {
     }
     if let Err(error) = atomic_json(
         &root.parked_path(),
-        &parked_payload(&parks, &corpus, &judgments, &dupes_digest, REPOSITORY),
+        &parked_payload(&parks, &corpus, &judgments, &dupes_digest, &repository),
     ) {
         return Outcome::refusal(format!("cannot write parked.json: {error}"), 1);
     }
@@ -137,17 +155,35 @@ fn append_plan(
 /// This stage writes four files, and the manifest last, so a reader never
 /// sees a report whose binding does not yet exist.
 pub fn cluster_report(root: &Root, allow_unbound: bool, json: bool) -> Outcome {
-    let corpus = match load_prs(root, REPOSITORY) {
+    let contract = match contract_of(root) {
+        Ok(contract) => contract,
+        Err(outcome) => return outcome,
+    };
+    let repository = contract.repository().to_owned();
+    let corpus = match load_prs(root, &repository) {
         Ok(corpus) => corpus,
         Err(error) => return Outcome::refusal(format!("corpus: {}", error.0), 1),
     };
-    let judgments: HashMap<u64, Judgment> =
-        match current_judgments(root, &corpus, REPOSITORY, MODEL, allow_unbound) {
-            Ok(judgments) => judgments,
-            Err(error) => return Outcome::refusal(format!("judgments: {error}"), 1),
-        };
-    let verdicts = match current_pairs(root, &corpus, &judgments, REPOSITORY, MODEL, allow_unbound)
-    {
+    let judgments: HashMap<u64, Judgment> = match current_judgments(
+        root,
+        &corpus,
+        &repository,
+        contract.model(),
+        contract.judge_questions(),
+        allow_unbound,
+    ) {
+        Ok(judgments) => judgments,
+        Err(error) => return Outcome::refusal(format!("judgments: {error}"), 1),
+    };
+    let verdicts = match current_pairs(
+        root,
+        &corpus,
+        &judgments,
+        &repository,
+        contract.model(),
+        contract.pair_questions(),
+        allow_unbound,
+    ) {
         Ok(verdicts) => verdicts,
         Err(error) => return Outcome::refusal(format!("pairs: {error}"), 1),
     };
@@ -164,14 +200,7 @@ pub fn cluster_report(root: &Root, allow_unbound: bool, json: bool) -> Outcome {
         );
     }
 
-    let built = cluster(
-        &corpus,
-        &judgments,
-        &verdicts,
-        REPOSITORY,
-        MODEL,
-        allow_unbound,
-    );
+    let built = cluster(&corpus, &judgments, &verdicts, &contract, allow_unbound);
     let out = root.out_dir();
     if let Err(error) = std::fs::create_dir_all(&out) {
         return Outcome::refusal(format!("cannot create {}: {error}", out.display()), 1);
@@ -184,7 +213,7 @@ pub fn cluster_report(root: &Root, allow_unbound: bool, json: bool) -> Outcome {
             return Outcome::refusal(format!("cannot write {name}: {error}"), 1);
         }
     }
-    if let Err(error) = std::fs::write(root.tranches_path(), render(&built, REPOSITORY)) {
+    if let Err(error) = std::fs::write(root.tranches_path(), render(&built, &repository)) {
         return Outcome::refusal(format!("cannot write tranches.md: {error}"), 1);
     }
     if let Err(error) = atomic_json(&root.summary_path(), &built.summary) {

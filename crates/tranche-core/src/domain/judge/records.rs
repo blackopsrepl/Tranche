@@ -4,7 +4,7 @@
 use serde_json::{Map, Value, json};
 use std::path::Path;
 
-use super::super::questions::{answer_field, judge_questions, metric_ceiling};
+use super::super::questions::{answer_field, metric_ceiling};
 use crate::util::parse_jsonl;
 
 pub fn finite_json(value: &Value) -> Value {
@@ -28,8 +28,9 @@ pub fn finite_json(value: &Value) -> Value {
 ///
 /// A field the model left unusable becomes `null` and is listed in
 /// `normalization_errors`; it is never coerced to a value, because an unknown
-/// category and an invented one are different facts.
-pub fn normalize_judgment(record: &Value) -> Value {
+/// category and an invented one are different facts. `questions` is the
+/// deployment's judge-question policy, which decides what a usable answer is.
+pub fn normalize_judgment(record: &Value, questions: &Value) -> Value {
     let mut object = normalized_record(record);
     let mut errors: Vec<String> = Vec::new();
     let mut answers = object
@@ -38,7 +39,7 @@ pub fn normalize_judgment(record: &Value) -> Value {
         .cloned()
         .unwrap_or_default();
 
-    if let Some(policy) = judge_questions().as_object() {
+    if let Some(policy) = questions.as_object() {
         for (name, question) in policy {
             let Some(field) = question
                 .get("type")

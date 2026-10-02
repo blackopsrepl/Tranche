@@ -5,7 +5,8 @@
 
 use std::path::Path;
 
-use super::paths::{BoundReport, Limits, MODEL, REPOSITORY, ReportError, Root, refuse};
+use super::paths::{BoundReport, Limits, ReportError, Root, refuse};
+use crate::policy::Contract;
 
 pub fn read_report(
     root: &Root,
@@ -14,20 +15,36 @@ pub fn read_report(
 ) -> Result<BoundReport, ReportError> {
     use crate::domain::{cluster::cluster, dupe::current_pairs, judge, pr::load_prs};
 
+    let contract = Contract::load(root.path())
+        .map_err(|error| refuse(&format!("no usable deployment contract: {error}")))?;
+    let repository = contract.repository();
+    let model = contract.model();
+    let questions = contract.judge_questions().clone();
+    let pair_questions = contract.pair_questions().clone();
+
     let summary = read_json(&root.summary_path())?;
     let clusters = read_json(&root.clusters_path())?;
     let dupes = read_json(&root.dupes_path())?;
-    let prs = load_prs(root, REPOSITORY).map_err(|error| Refuse::from(error.0))?;
+    let prs = load_prs(root, repository).map_err(|error| Refuse::from(error.0))?;
 
     // A malformed record anywhere in the log makes the whole observation unsafe,
     // even though only the last record per PR is used.
     if root.judgments_path().exists() {
         check_records_are_objects(&root.judgments_path())?;
     }
-    let judgments = judge::current_judgments(root, &prs, REPOSITORY, MODEL, allow_unbound)
-        .map_err(Refuse::from)?;
-    let pairs = current_pairs(root, &prs, &judgments, REPOSITORY, MODEL, allow_unbound)
-        .map_err(Refuse::from)?;
+    let judgments =
+        judge::current_judgments(root, &prs, repository, model, &questions, allow_unbound)
+            .map_err(Refuse::from)?;
+    let pairs = current_pairs(
+        root,
+        &prs,
+        &judgments,
+        repository,
+        model,
+        &pair_questions,
+        allow_unbound,
+    )
+    .map_err(Refuse::from)?;
     if root.pairs_path().exists() {
         check_records_are_objects(&root.pairs_path())?;
     }
@@ -35,7 +52,7 @@ pub fn read_report(
     // Only the producer's current projection, which the report must bind.
     let expected_clusters = crate::util::digest(&clusters);
     let expected_dupes = crate::util::digest(&dupes);
-    let rebuilt = cluster(&prs, &judgments, &pairs, REPOSITORY, MODEL, allow_unbound);
+    let rebuilt = cluster(&prs, &judgments, &pairs, &contract, allow_unbound);
     let binding_matches = summary
         .get("report_binding")
         .and_then(serde_json::Value::as_str)
@@ -54,7 +71,7 @@ pub fn read_report(
         .get("format_version")
         .and_then(serde_json::Value::as_u64)
         != Some(2)
-        || summary.get("repo").and_then(serde_json::Value::as_str) != Some(REPOSITORY)
+        || summary.get("repo").and_then(serde_json::Value::as_str) != Some(repository)
         || summary
             .get("allow_unbound")
             .and_then(serde_json::Value::as_bool)
@@ -74,7 +91,7 @@ pub fn read_report(
             &judgments,
             &prs,
             &expected_dupes,
-            REPOSITORY,
+            &contract,
         )
         .map_err(Refuse::from)?;
         if crate::util::digest(batches) != crate::util::digest(&expected) {
@@ -91,7 +108,7 @@ pub fn read_report(
             &prs,
             &judgments,
             &expected_dupes,
-            REPOSITORY,
+            repository,
         );
         if crate::util::digest(parked) != crate::util::digest(&expected) {
             return Err(refuse("parked.json is stale or modified; rerun batches"));
@@ -139,7 +156,7 @@ pub fn read_report(
         }
     }
 
-    let latest_judgments = judge::load_done(root).map_err(Refuse::from)?;
+    let latest_judgments = judge::load_done(root, &questions).map_err(Refuse::from)?;
 
     Ok(BoundReport {
         summary,

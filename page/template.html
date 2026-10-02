@@ -2,7 +2,7 @@
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>OMARCHY — TRIAGE with Tranche (powered by Jev)</title>
+<title>{{title}}</title>
 <link rel="stylesheet" href="assets/workbench.css">
 <script src="assets/workbench.js" defer></script>
 </head><body>
@@ -10,18 +10,18 @@
 <div class="shell">
 <header class="masthead">
 <div class="report-brand">
-<h1><picture class="wordmark"><source media="(max-width:600px) and (prefers-reduced-motion: reduce)" srcset="assets/omarchy-title.png"><source media="(max-width:600px)" srcset="assets/omarchy.gif"><source media="(prefers-reduced-motion: reduce)" srcset="assets/tranche-title.png"><img src="assets/tranche.gif" alt="OMARCHY — TRIAGE with Tranche (powered by Jev)" width="1560" height="473"></picture></h1>
-<div class="mobile-signoff">TRIAGE with <span class="tranche-motion">Tranche</span> <small>(powered by Jev)</small></div>
+<h1><picture class="wordmark"><source media="(max-width:600px) and (prefers-reduced-motion: reduce)" srcset="assets/omarchy-title.png"><source media="(max-width:600px)" srcset="assets/omarchy.gif"><source media="(prefers-reduced-motion: reduce)" srcset="assets/tranche-title.png"><img src="assets/tranche.gif" alt="{{title}}" width="1560" height="473"></picture></h1>
+<div class="mobile-signoff">{{title}}</div>
 <figure class="keeper"><img src="assets/tranche-mascot.png" alt="Tranche, the backlog keeper, holding three pull-request cards" width="564" height="800"></figure>
 </div>
-<div class="masthead-context"><span class="eyebrow">PULL REQUEST WORKBENCH</span><a href="https://github.com/omacom/omarchy">omacom/omarchy ↗</a><p>{{count_commas}} captured PRs</p></div>
+<div class="masthead-context"><span class="eyebrow">PULL REQUEST WORKBENCH</span><a href="{{repo_url}}">{{repository}} ↗</a><p>{{count_commas}} captured PRs</p></div>
 </header>
 <div class="workbench">
 <aside aria-label="PR categories" class="sidebar">
 <div class="sidebar-heading"><span class="eyebrow">CATEGORIES</span><span class="small">PRs</span></div>
 <div id="category-buttons"></div>
 <label class="mobile-category" for="category">Category<select id="category"><option value="all">All categories</option>{{options}}</select></label>
-<div class="sidebar-foot"><span class="status-dot"></span> Review deliberately<p>Built for the Omarchy triage team.</p><a href="https://github.com/blackopsrepl/Tranche">Tranche source ↗</a></div>
+<div class="sidebar-foot"><span class="status-dot"></span> Review deliberately<p>{{sidebar_note}}</p><a href="{{source_url}}">Tranche source ↗</a></div>
 </aside>
 <main id="main">
 <div class="queue-heading"><h2>Pull requests</h2><span class="small">FIND · INSPECT · REVIEW</span></div>
@@ -52,9 +52,9 @@
 <ol id="results" class="results" aria-label="Pull requests"></ol>
 <div id="empty" class="empty" hidden><span class="eyebrow">NO MATCHES</span><h3>No pull requests found.</h3><p>Try fewer terms or a different queue or category.</p><button id="empty-reset" type="button">Show all pull requests</button></div>
 <nav class="pagination" aria-label="Results pages"><button id="prev" type="button">← Previous</button><span id="page-label"></span><button id="next" type="button">Next →</button></nav>
-<noscript><p>Enable JavaScript to search and inspect {{count}} captured PRs. <a href="https://github.com/omacom/omarchy/pulls">Browse on GitHub</a>.</p></noscript>
-<div id="load-failure" class="load-failure" hidden><p>The workbench data failed to load. <a href="https://github.com/omacom/omarchy/pulls">Browse the pull requests on GitHub</a>, then reload this page.</p></div>
-<footer><a href="https://github.com/blackopsrepl/Tranche">Tranche</a><span>{{count}} captured PRs · <a href="https://github.com/omacom/omarchy/pulls">Open GitHub ↗</a></span></footer>
+<noscript><p>Enable JavaScript to search and inspect {{count}} captured PRs. <a href="{{repo_url}}/pulls">Browse on GitHub</a>.</p></noscript>
+<div id="load-failure" class="load-failure" hidden><p>The workbench data failed to load. <a href="{{repo_url}}/pulls">Browse the pull requests on GitHub</a>, then reload this page.</p></div>
+<footer><a href="{{source_url}}">Tranche</a><span>{{count}} captured PRs · <a href="{{repo_url}}/pulls">Open GitHub ↗</a></span></footer>
 </main>
 </div>
 </div>
