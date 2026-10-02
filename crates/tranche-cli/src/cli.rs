@@ -48,6 +48,8 @@ pub enum Command {
     Refresh(Refresh),
     /// Judge, then dupes, cluster and batches.
     All(All),
+    /// Serve the read-only MCP stdio surface over the bound report.
+    Mcp,
     /// Render the workbench from the bound reports.
     Page,
     /// Capture, inspect and export public PR evidence.

@@ -59,6 +59,10 @@ pub fn run(cli: &Cli) -> Outcome {
         ),
         Command::All(args) => run_all(&root, args.limit, args.max_pairs),
         Command::Page => crate::workbench::page(&root, &mut |line: &str| println!("{line}")),
+        Command::Mcp => match crate::mcp::serve(&root) {
+            Ok(()) => Outcome::success(String::new()),
+            Err(error) => Outcome::refusal(error, 1),
+        },
     }
 }
 
