@@ -21,7 +21,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref_name }}
-      - run: rustup show
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
@@ -34,7 +37,11 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref_name }}
       - name: Build
-        run: cargo build --locked --release --target "$TARGET" -p tranche-cli
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup target add "$TARGET"
+          cargo build --locked --release --target "$TARGET" -p tranche-cli
       - name: Exercise it before shipping it
         run: |
           "./target/$TARGET/release/$BIN" --help
@@ -88,57 +95,10 @@ jobs:
           fi
           printf '%s\n' "$body" > release-notes.md
 
-      # Forgejo publishes with a token, not the `gh` client. The tag already
-      # exists locally, so the release is created against it by name.
-      - name: Create the Forgejo release
+      # The job-scoped token expires with this run; no stored PAT is needed.
+      - name: Publish and verify the Forgejo release
         env:
-          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          TOKEN: ${{ github.token }}
           SERVER: ${{ github.server_url }}
           REPOSITORY: ${{ github.repository }}
-        run: |
-          # Escape the notes into a JSON string with awk rather than pulling in
-          # an encoder: a release job should need nothing but the toolchain.
-          notes=$(awk '{gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); printf "%s\\n", $0}' release-notes.md)
-          payload=$(printf '{"tag_name":"%s","name":"%s","body":"%s","draft":false}' \
-            "$RELEASE_TAG" "$RELEASE_TAG" "$notes")
-          exists=$(curl -s -o /dev/null -w '%{http_code}' \
-            -H "Authorization: token $TOKEN" \
-            "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG")
-          if [ "$exists" = "200" ]; then
-            curl -fsS -X PATCH -H "Authorization: token $TOKEN" \
-              -H 'Content-Type: application/json' -d "$payload" \
-              "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG" > /dev/null
-          else
-            curl -fsS -X POST -H "Authorization: token $TOKEN" \
-              -H 'Content-Type: application/json' -d "$payload" \
-              "$SERVER/api/v1/repos/$REPOSITORY/releases" > /dev/null
-          fi
-
-      - name: Attach the archive and its checksum
-        env:
-          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
-          SERVER: ${{ github.server_url }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          for asset in dist/*.tar.gz dist/*.sha256; do
-            curl -fsS -X POST -H "Authorization: token $TOKEN" \
-              -F "attachment=@$asset" \
-              "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG/assets?name=$(basename "$asset")" \
-              > /dev/null
-            echo "attached $(basename "$asset")"
-          done
-
-      - name: Prove the release is complete
-        env:
-          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
-          SERVER: ${{ github.server_url }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          curl -fsS -H "Authorization: token $TOKEN" \
-            "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG" \
-            | grep -o '"name":"[^"]*"\|"size":[0-9]*'
-          count=$(curl -fsS -H "Authorization: token $TOKEN" \
-            "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG" \
-            | grep -c '"browser_download_url"')
-          echo "assets: $count"
-          test "$count" -ge 2
+        run: node scripts/publish-forgejo-release.cjs
