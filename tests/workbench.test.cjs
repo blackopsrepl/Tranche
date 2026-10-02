@@ -30,7 +30,7 @@ test('browser workbench renders safe text, inspects PRs, restores focus and URL 
   try {
     const pagePath = path.join(directory, 'probe.html');
     const page = fs.readFileSync(path.join(__dirname, '../docs/index.html'), 'utf8');
-    const data = {prs: [{number: 1234, title: 'Fix <img src=x onerror="window.pwned=1"> suspend', body: '</script><b>bluetooth</b>', author: 'river', category: 'docs', created: '2026-01-01', activity: {head_moved: true, idle_since: null, thread_updated: '2026-02-01'}, risk: null, security: 0.8, security_priority: true, finished: null, draft: false, freshness: 'unjudged or stale', related: true, candidate: false, senior: false, followup: false}], categories: {docs: 'Docs', unknown: 'Unknown'}, groups: {confirmed_groups: [], review_groups: [], uncertain_pairs: [{a: 1234, b: 4321, verdict: 'unrelated', p_same: 0.9, classification: 'contradictory'}]}};
+    const data = {repository: 'sample/widgets', prs: [{number: 1234, title: 'Fix <img src=x onerror="window.pwned=1"> suspend', body: '</script><b>bluetooth</b>', author: 'river', category: 'docs', created: '2026-01-01', activity: {head_moved: true, idle_since: null, thread_updated: '2026-02-01'}, risk: null, security: 0.8, security_priority: true, finished: null, draft: false, freshness: 'unjudged or stale', related: true, candidate: false, senior: false, followup: false}], categories: {docs: 'Docs', unknown: 'Unknown'}, groups: {confirmed_groups: [], review_groups: [], uncertain_pairs: [{a: 1234, b: 4321, verdict: 'unrelated', p_same: 0.9, classification: 'contradictory'}]}};
     data.prs.push({number:4321, title:'Add screensaver timer', body:'', author:'stone', category:'docs', created:'2025-01-01', risk:0, security:0, security_priority:false, finished:0, draft:true, freshness:'current', related:true});
     data.groups.review_groups.push({members:[1234,4321], conflicting_pairs:[{a:1234,b:4321,verdict:'unrelated',p_same:0.1,classification:'different'}], uncertain_pairs:[], missing_pairs:[[1234,9999]], unbound_evidence:true});
     const payload = JSON.stringify(data).replace(/</g, '\\u003c');
@@ -68,7 +68,7 @@ test('browser workbench renders safe text, inspects PRs, restores focus and URL 
         check(document.querySelector('#detail-content').textContent.includes('Unknown'), 'unknown not zero');
         check(document.querySelector('.pr-meta .tag.security')?.textContent === 'Security first', 'security priority tag');
         check(!document.querySelector('#detail-content b'), 'body stays text');
-        check(document.querySelector('#detail-content a').href === 'https://github.com/omacom/omarchy/pull/1234', 'safe github link');
+        check(document.querySelector('#detail-content a').href === 'https://github.com/sample/widgets/pull/1234', 'safe github link');
         check(location.search.includes('pr=1234'), 'selection deep link');
         document.querySelector('#close-detail').click();
         check(!document.querySelector('dialog').open && document.activeElement === row, 'focus restored');

@@ -153,7 +153,17 @@
     function githubLink(number) {
       const link = node('a', 'Open pull request on GitHub ↗', 'github-link');
       // Never trust captured URLs, query strings or model text as link targets.
-      if (positiveInteger(number)) link.href = `https://github.com/omacom/omarchy/pull/${number}`;
+      const repository = data.repository || (() => {
+        // Historical payloads predate repository identity; the rendered masthead
+        // carries the deployment's link, never a captured PR URL.
+        try {
+          const url = new URL(document.querySelector('.masthead-context a')?.href);
+          return url.origin === 'https://github.com' ? url.pathname.slice(1) : '';
+        } catch { return ''; }
+      })();
+      if (positiveInteger(number) && /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_.-]+$/.test(repository)) {
+        link.href = `https://github.com/${repository}/pull/${number}`;
+      }
       link.target = '_blank'; link.rel = 'noopener noreferrer';
       return link;
     }
