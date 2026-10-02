@@ -1289,7 +1289,7 @@ dependencies = [
 
 [[package]]
 name = "tranche-cli"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "clap",
  "serde",
@@ -1302,7 +1302,7 @@ dependencies = [
 
 [[package]]
 name = "tranche-core"
-version = "0.8.2"
+version = "0.8.3"
 dependencies = [
  "libc",
  "regex",

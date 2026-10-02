@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/tranche-core", "crates/tranche-cli"]
 
 [workspace.package]
-version = "0.8.2"
+version = "0.8.3"
 edition = "2024"
 authors = ["Vittorio Distefano <info@vdistefano.studio>"]
 repository = "https://github.com/blackopsrepl/Tranche"

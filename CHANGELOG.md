@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.3](https://github.com/blackopsrepl/Tranche/compare/v0.8.2...v0.8.3) (2026-10-02)
+
+
+### Features
+
+* **cli:** migrate Tranche to Rust ([#20](https://github.com/blackopsrepl/Tranche/issues/20)) ([bbfa017](https://github.com/blackopsrepl/Tranche/commit/bbfa0177446fc119abf33381626d1b631fb8e0e4))
+* **cli:** serve the MCP surface as a subcommand ([bb39663](https://github.com/blackopsrepl/Tranche/commit/bb396639d6d7446bb7a412d9efb1caebdbc463bc))
+
+
+### Bug Fixes
+
+* **ci:** use a current Rust toolchain and publish Forgejo by release ID ([fdce351](https://github.com/blackopsrepl/Tranche/commit/fdce3514193ddfe863998192d4bfb0f3c6927967))
+* **install:** target the CLI crate and document the native surfaces ([2707623](https://github.com/blackopsrepl/Tranche/commit/270762348eea170a244435bb25037b0323516897))
+* **mcp:** honor the advertised tool argument contract ([117536b](https://github.com/blackopsrepl/Tranche/commit/117536bbcff10eb60c8ed166a24f1e4312d6e6c4))
+* **mcp:** restore clean module boundaries after the split ([069f65d](https://github.com/blackopsrepl/Tranche/commit/069f65dc44cdbd0b8e740b0097d630a132d38582))
+* **release:** bump the Rust versions with the release tag ([a854e7d](https://github.com/blackopsrepl/Tranche/commit/a854e7d29e98bffb284b74892291021297105ecf))
+
 ## [0.8.2](https://github.com/blackopsrepl/Tranche/compare/v0.8.1...v0.8.2) (2026-10-02)
 
 
