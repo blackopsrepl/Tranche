@@ -30,9 +30,10 @@ depends on a transport.
 
 `out/` is the interface between the pipeline and everything that reads it, so
 the code is judged by whether it reproduces those bytes — not by whether it
-looks correct. `crates/tranche-core/tests/the_published_report.rs` is that
-judgement: it rebuilds the report from the stored corpus and asserts equality
-against the committed files.
+looks correct. `crates/tranche-core/tests/reporting_the_corpus.rs` and
+`packing_the_corpus.rs` rebuild the fixture artifacts and assert equality.
+`rebuilding_the_report.rs` pins the full local corpus and runs with
+`cargo test --locked -- --ignored`.
 
 Three properties of the format look like accidents and are not, because each one
 silently changes a tracked artifact when it is got wrong:
@@ -62,9 +63,9 @@ sorted). Both are load-bearing, and the crate documents them as such.
 3. **`gh` stays a subprocess.** The GitHub credential stays inside `gh`; do not
    reimplement GitHub auth.
 
-## Not wired yet
+## CLI and MCP: two front-ends, one report
 
-Nothing: every command runs. `tranche mcp` serves the read-only MCP surface over
+`tranche mcp` serves the read-only MCP surface over
 the same bound report the CLI serves — same gates, same digests, one source of
 truth. It is a front-end for AI agents, not a separate implementation; the two
 surfaces cannot disagree because they are one program reading one report through
@@ -76,7 +77,7 @@ the report's binding and a disclaimer: model suggestions are not merge approval,
 and digests prove integrity, not authenticity. Point a client at it:
 
 ```json
-{"tranche": {"command": "tranche", "args": ["mcp", "--root", "/path/to/checkout"]}}
+{"mcpServers": {"tranche": {"command": "tranche", "args": ["--root", "/path/to/checkout", "mcp"]}}}
 ```
 
 The masthead GIF generator was not ported; the GIF stays as a committed asset.

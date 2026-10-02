@@ -163,7 +163,7 @@ check: test
 	@git diff --check
 
 cli-install:
-	@cargo install --path . --locked
+	@cargo install --path crates/tranche-cli --locked
 
 release-check: check
 	@node --check .versionrc.js

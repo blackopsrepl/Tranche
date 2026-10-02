@@ -9,7 +9,8 @@ tranche evidence show    --batch B001
 tranche evidence export  --batch B001 --output review-packet.json
 ```
 
-Requires the `tranche` binary (`make cli-install`, or `cargo install --path .`).
+Requires the `tranche` binary (`make cli-install`, or
+`cargo install --path crates/tranche-cli --locked`).
 Run it from the checkout, or pass `--root /path/to/Tranche` from anywhere.
 
 Evidence capture is **optional, read-only toward GitHub and model-free**. It never

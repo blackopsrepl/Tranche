@@ -8,7 +8,7 @@ implementation. The commands that run today are marked below.
 From a Tranche checkout, with a current Rust toolchain:
 
 ```sh
-cargo install --path . --locked
+cargo install --path crates/tranche-cli --locked
 tranche --help
 tranche --root /absolute/path/to/Tranche cluster
 ```
@@ -20,7 +20,8 @@ baked-in build path.
 
 ## Commands
 
-Every command is wired except the `evidence` verbs, which still refuse.
+Every command below is implemented. The MCP server is a read-only front-end over
+the same bound report and validation gates, not a second pipeline.
 
 ```sh
 tranche fetch [--transport gh|urllib|curl]
@@ -31,6 +32,7 @@ tranche batches
 tranche refresh [--max-pairs N] [--no-page] [--dry-run]
 tranche all [--limit N] [--resume] [--max-pairs N]
 tranche page
+tranche --root /absolute/path/to/Tranche mcp
 tranche evidence capture --batch B001 [--request-budget N] [--max-bytes N]
                                  [--fresh] [--reuse-capture ID] [--break-lock]
 tranche evidence show [--batch B001 | --capture ID] [--source ID] [--citation ID]

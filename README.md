@@ -48,7 +48,7 @@ for the fetch stage. A Jev API key is needed only for `judge` and `dupes`.
 
 ```bash
 git clone https://github.com/blackopsrepl/Tranche && cd Tranche
-cargo install --path . --locked
+cargo install --path crates/tranche-cli --locked
 ```
 
 The binary is self-contained: no interpreter, no daemon, no database, no service
