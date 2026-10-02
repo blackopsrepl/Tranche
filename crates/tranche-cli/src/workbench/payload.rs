@@ -60,7 +60,7 @@ pub(super) fn payload(
     let rows: Vec<Value> = ordered
         .into_iter()
         .map(|pr| {
-            row(
+            let mut built = row(
                 pr,
                 judgments,
                 &grouped,
@@ -68,7 +68,12 @@ pub(super) fn payload(
                 &parked_by_number,
                 &batch_of,
                 &latest,
-            )
+            );
+            built["assignment"] =
+                tranche_core::domain::assignment::proposal::assigned(assignments, pr.number)
+                    .cloned()
+                    .unwrap_or(Value::Null);
+            built
         })
         .collect();
 

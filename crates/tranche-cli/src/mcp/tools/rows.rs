@@ -29,6 +29,7 @@ pub struct View {
     pub dupes: Value,
     pub batches: Option<Value>,
     pub parked: Option<Value>,
+    pub assignments: Option<Value>,
     pub prs: Prs,
     pub judgments: HashMap<u64, Judgment>,
     pub pairs: Vec<Value>,
@@ -119,6 +120,8 @@ impl View {
                 };
                 json!({
                     "number": pr.number,
+                    "assignment": tranche_core::domain::assignment::proposal::assigned(self.assignments.as_ref(), pr.number),
+                    "assigned": tranche_core::domain::assignment::proposal::assigned(self.assignments.as_ref(), pr.number).is_some(),
                     "title": pr.title,
                     "body": pr.body,
                     "author": pr.author,

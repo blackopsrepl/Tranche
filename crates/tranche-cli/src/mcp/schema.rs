@@ -59,7 +59,7 @@ pub fn definitions(judge_categories: &[String]) -> Vec<Value> {
             "finished_form": {"type": ["number", "null"], "minimum": 0, "maximum": 3, "default": null},
             "batch": {"type": ["string", "null"], "default": null, "pattern": "^B[0-9]{3,6}$"},
             "queue": {"type": "string", "default": "all",
-                      "enum": ["all", "security", "candidates", "senior", "followup", "parked", "related"]},
+                      "enum": ["all", "security", "candidates", "senior", "followup", "parked", "related", "assigned"]},
             "offset": pagination()["offset"],
             "limit": pagination()["limit"],
         },

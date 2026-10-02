@@ -38,6 +38,7 @@ impl View {
             ("security", "security_priority"),
             ("candidates", "candidate"),
             ("related", "related"),
+            ("assigned", "assigned"),
             ("senior", "senior"),
             ("followup", "followup"),
         ] {
@@ -118,11 +119,12 @@ impl View {
             "category_counts": Value::Object(category_counts),
             "queues": Value::Object(queues),
             "parked": parked_block,
+            "assignments": self.assignments,
             "batches": overview,
             "filters": {
                 "categories": [{"security-review": true}, self.judge_categories(), {"unknown": true}],
                 "risk_bands": ["low", "core", "danger", "unknown"],
-                "queues": ["security", "all", "candidates", "senior", "followup", "parked", "related"],
+                "queues": ["security", "all", "candidates", "senior", "followup", "parked", "related", "assigned"],
             },
         }))
     }

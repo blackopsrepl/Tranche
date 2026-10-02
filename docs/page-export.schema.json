@@ -59,7 +59,8 @@
         "followup": {"type": "boolean"},
         "related": {"type": "boolean"},
         "parked": {"type": "array", "items": {"type": "string"}},
-        "batches": {"type": "array", "items": {"$ref": "#/$defs/prBatch"}}
+        "batches": {"type": "array", "items": {"$ref": "#/$defs/prBatch"}},
+        "assignment": {"type": ["object", "null"], "properties": {"member_id": {"type": "string", "pattern": "^synthetic-[a-z0-9-]+$"}}, "required": ["member_id"]}
       },
       "additionalProperties": false
     },

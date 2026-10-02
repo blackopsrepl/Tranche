@@ -84,6 +84,7 @@ impl View {
                     "senior" => "senior",
                     "followup" => "followup",
                     "related" => "related",
+                    "assigned" => "assigned",
                     "parked" => {
                         if !row["parked"]
                             .as_array()

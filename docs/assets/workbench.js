@@ -45,9 +45,10 @@
   // Batch membership is browsed through the Batches view, not a queue.
   // Issue #8: parked is a queue whose field is a reason array, so queue
   // membership is non-emptiness — an empty array must never match.
-  const queues = {security: 'security_priority', all: null, candidates: 'candidate', senior: 'senior', followup: 'followup', parked: 'parked', related: 'related', revised: 'head_moved'};
+  const queues = {security: 'security_priority', all: null, candidates: 'candidate', senior: 'senior', followup: 'followup', parked: 'parked', related: 'related', revised: 'head_moved', assigned: 'assignment'};
   const queueMatch = (pr, field) => {
     if (!field) return true;
+    if (field === 'assignment') return typeof pr.assignment?.member_id === 'string' && pr.assignment.member_id.length > 0;
     const value = field === 'head_moved' ? pr.activity?.head_moved : pr[field];
     return Array.isArray(value) ? value.length > 0 : Boolean(value);
   };
@@ -124,6 +125,7 @@
   function start(data) {
     const rows = data.prs;
     const byNumber = new Map(rows.map(pr => [pr.number, pr]));
+    const assignmentsByNumber = new Map((data.assignments?.assignments || []).map(r => [r.number, r]));
     const parkedByNumber = new Map(((data.parked || {}).members || []).map(m => [m.number, m]));
     const indexes = new Map(rows.map(pr => [pr.number, index(pr)]));
     const batchById = new Map((data.batches || []).map(batch => [batch.id, batch]));
@@ -256,6 +258,14 @@
         content.append(list);
         content.append(node('p', 'Model-suggested batching for the final cumulative PRs; ordering is not a merge approval.', 'small'));
       }
+      const assignment = assignmentsByNumber.get(pr.number);
+      if (assignment) {
+        content.append(node('h3', 'Proposed skill assignment · synthetic simulation'));
+        content.append(node('p', assignment.member_id ? `Proposed owner: ${assignment.member_id}` :
+          `Unassigned: ${String(assignment.reason).replaceAll('_', ' ')}`, 'small'));
+        content.append(node('p', `Required skills: ${(assignment.required_skills || []).join(', ') || (assignment.evidence_known ? 'None' : 'Unknown')}`, 'small'));
+        content.append(node('p', 'Synthetic people, not real GitHub handles. AI-assisted proposal only; no approval, reservation or automatic mention.', 'small'));
+      }
       const parkedEntry = parkedByNumber.get(pr.number);
       if (parkedEntry) {
         content.append(node('h3', 'Parked before batching'));
@@ -347,6 +357,7 @@
           const meta = node('span', undefined, 'pr-meta');
           meta.append(node('span', `@${pr.author}`, 'pr-author'), node('span', categoryLabel(pr.category)),
             node('span', pr.created ? pr.created.slice(0, 10) : 'Date unknown'));
+          if (pr.assignment?.member_id) meta.append(node('span', `Proposed: ${pr.assignment.member_id} · synthetic`, 'tag'));
           if (pr.draft) meta.append(node('span', 'Draft', 'tag draft'));
           if (pr.security_priority) meta.append(node('span', 'Security first', 'tag security'));
           if (pr.activity?.head_moved) meta.append(node('span', 'Head revised', 'tag revised'));
@@ -395,6 +406,15 @@
       b.dataset.category = category;
       b.append(node('span', category === 'all' ? 'All categories' : categoryLabel(category)), node('span', formatCount(count), 'category-count'));
       $('category-buttons').append(b);
+    }
+    if (!document.querySelector('[data-queue="assigned"]')) {
+      const anchor = document.querySelector('[data-queue="related"]');
+      if (anchor) {
+        const assignmentQueue = button('Proposed owners ', () => {}, anchor.className);
+        assignmentQueue.dataset.queue = 'assigned';
+        assignmentQueue.append(node('span', '0'));
+        anchor.after(assignmentQueue);
+      }
     }
     document.querySelectorAll('[data-queue]').forEach(b => {
       const field = queues[b.dataset.queue];

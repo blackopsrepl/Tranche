@@ -215,6 +215,7 @@ fn loaded_view(root: &tranche_core::report::Root) -> Result<View, ReportError> {
         dupes: report.dupes.clone(),
         batches: report.batches.clone(),
         parked: report.parked.clone(),
+        assignments: report.assignments.clone(),
         prs: report.prs,
         judgments: report.judgments,
         pairs: report.pairs,

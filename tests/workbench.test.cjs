@@ -33,6 +33,8 @@ test('browser workbench renders safe text, inspects PRs, restores focus and URL 
     const data = {prs: [{number: 1234, title: 'Fix <img src=x onerror="window.pwned=1"> suspend', body: '</script><b>bluetooth</b>', author: 'river', category: 'docs', created: '2026-01-01', activity: {head_moved: true, idle_since: null, thread_updated: '2026-02-01'}, risk: null, security: 0.8, security_priority: true, finished: null, draft: false, freshness: 'unjudged or stale', related: true, candidate: false, senior: false, followup: false}], categories: {docs: 'Docs', unknown: 'Unknown'}, groups: {confirmed_groups: [], review_groups: [], uncertain_pairs: [{a: 1234, b: 4321, verdict: 'unrelated', p_same: 0.9, classification: 'contradictory'}]}};
     data.prs.push({number:4321, title:'Add screensaver timer', body:'', author:'stone', category:'docs', created:'2025-01-01', risk:0, security:0, security_priority:false, finished:0, draft:true, freshness:'current', related:true});
     data.groups.review_groups.push({members:[1234,4321], conflicting_pairs:[{a:1234,b:4321,verdict:'unrelated',p_same:0.1,classification:'different'}], uncertain_pairs:[], missing_pairs:[[1234,9999]], unbound_evidence:true});
+    data.prs[0].assignment = {number:1234, member_id:'synthetic-demo', required_skills:['docs'], evidence_known:true, reason:'proposed'};
+    data.assignments = {assignments:[data.prs[0].assignment]};
     const payload = JSON.stringify(data).replace(/</g, '\\u003c');
     const probe = `<script>window.addEventListener('DOMContentLoaded', async () => {
       const report = document.createElement('pre'); report.id = 'probe-result'; document.body.append(report);
@@ -53,6 +55,11 @@ test('browser workbench renders safe text, inspects PRs, restores focus and URL 
         document.body.dispatchEvent(new KeyboardEvent('keydown', {key:'k', ctrlKey:true, bubbles:true, cancelable:true}));
         check(document.activeElement.id === 'search', 'Ctrl K shortcut');
         check(document.querySelectorAll('.pr-row').length === 2, 'all captured PRs rendered');
+        const assignedQueue = document.querySelector('[data-queue="assigned"]');
+        check(assignedQueue.querySelector('span').textContent === '1', 'assignment counter');
+        assignedQueue.click();
+        check(document.querySelectorAll('.pr-row').length === 1 && location.search.includes('queue=assigned'), 'assignment queue uses same membership');
+        document.querySelector('[data-queue="all"]').click();
         check(document.querySelector('.pr-meta .tag.revised')?.textContent === 'Head revised', 'revision badge');
         check(document.querySelector('[data-queue="revised"] span').textContent === '1', 'revised queue count');
         check(document.querySelector('#sort option[value=idle]'), 'idle sort available');
@@ -66,6 +73,8 @@ test('browser workbench renders safe text, inspects PRs, restores focus and URL 
         check(document.querySelector('dialog').open, 'native dialog opens');
         check(document.querySelector('#detail-title').textContent === ${JSON.stringify(data.prs[0].title)}, 'full title');
         check(document.querySelector('#detail-content').textContent.includes('Unknown'), 'unknown not zero');
+        check(document.querySelector('#detail-content').textContent.includes('Proposed owner: synthetic-demo'), 'assignment owner visible');
+        check(document.querySelector('#detail-content').textContent.includes('not real GitHub handles'), 'simulation disclaimer visible');
         check(document.querySelector('.pr-meta .tag.security')?.textContent === 'Security first', 'security priority tag');
         check(!document.querySelector('#detail-content b'), 'body stays text');
         check(document.querySelector('#detail-content a').href === 'https://github.com/omacom/omarchy/pull/1234', 'safe github link');
@@ -240,4 +249,12 @@ test('URL state round trips search, queue, category, sort, page and selected PR'
     assert.equal(api.parseState(`?page=${value}&pr=${value}`, categories).pr, null);
   }
   assert.equal(api.serializeState(api.parseState('', categories)), '');
+});
+
+test('assignment queue uses proposed owners, not missing or unassigned evidence', () => {
+  const rows = [{number:1, assignment:{member_id:'synthetic-demo'}}, {number:2, assignment:null},
+    {number:3, assignment:{member_id:null}}, {number:4, assignment:{}}];
+  assert.equal(api.select(rows, {queue:'assigned'}).total, 1);
+  assert.deepEqual(api.select(rows, {queue:'assigned'}).items.map(r => r.number), [1]);
+  assert.equal(api.parseState('?queue=assigned').queue, 'assigned');
 });
