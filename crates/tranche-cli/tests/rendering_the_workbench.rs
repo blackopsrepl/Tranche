@@ -241,6 +241,41 @@ fn excel_export_is_a_standalone_workbook_and_can_be_selected_alone() {
 }
 
 #[test]
+fn xlsx_export_is_byte_stable_for_identical_inputs() {
+    let root = root();
+    let first_output = run_with(root.path(), &["--export-xlsx"]);
+    assert!(
+        first_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first_output.stderr)
+    );
+    let path = root.path().join("docs/data/report.xlsx");
+    let first = fs::read(&path).expect("the first workbook reads");
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    let repeated_output = run_with(root.path(), &["--export-xlsx"]);
+    assert!(
+        repeated_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&repeated_output.stderr)
+    );
+    let repeated = fs::read(&path).expect("the repeated workbook reads");
+    assert_eq!(first, repeated, "identical inputs produce identical bytes");
+
+    let file = fs::File::open(path).expect("the workbook opens");
+    let mut archive = zip::ZipArchive::new(file).expect("the workbook ZIP is valid");
+    let mut core_xml = String::new();
+    archive
+        .by_name("docProps/core.xml")
+        .expect("document properties")
+        .read_to_string(&mut core_xml)
+        .expect("document properties read");
+    assert!(
+        core_xml.contains("2000-01-01T00:00:00Z"),
+        "workbook metadata uses a fixed timestamp"
+    );
+}
+
+#[test]
 fn both_export_formats_can_be_selected_together() {
     let root = root();
     let output = run_with(root.path(), &["--export-json", "--export-xlsx"]);
