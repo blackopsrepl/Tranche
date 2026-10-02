@@ -13,31 +13,6 @@ use tranche_core::{
     report::{MODEL, REPOSITORY, Root},
 };
 
-pub fn qualify(root: &Root, report: &mut dyn FnMut(&str)) -> Result<(usize, usize), String> {
-    preprocess(root, false, None, report)
-}
-pub fn preprocess(
-    root: &Root,
-    requirements: bool,
-    limit: Option<u64>,
-    report: &mut dyn FnMut(&str),
-) -> Result<(usize, usize), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|e| e.to_string())?;
-    preprocess_with(
-        root,
-        requirements,
-        limit,
-        &mut |state, questions| {
-            runtime
-                .block_on(jev::ask(state, questions, MODEL))
-                .map_err(|e| e.to_string())
-        },
-        report,
-    )
-}
 pub fn preprocess_options(
     root: &Root,
     requirements: bool,
