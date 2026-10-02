@@ -159,7 +159,7 @@ test:
 check: test
 	@cargo fmt --check
 	@cargo clippy --locked --all-targets -- -D warnings
-	@if command -v node >/dev/null 2>&1; then node --test tests/workbench.test.cjs; else printf 'Node unavailable; optional frontend tests skipped.\n'; fi
+	@if command -v node >/dev/null 2>&1; then node --test tests/*.test.cjs; else printf 'Node unavailable; optional frontend and release tests skipped.\n'; fi
 	@git diff --check
 
 cli-install:
