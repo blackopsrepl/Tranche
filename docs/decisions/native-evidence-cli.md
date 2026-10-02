@@ -2,6 +2,10 @@
 
 Design input for the native evidence CLI (issue #9). Written before implementation;
 the acceptance section at the end is the matrix the implementation is held to.
+Where the design and implementation differ, master’s native `evidence.py` is
+authoritative. The [native packet documentation](../EVIDENCE_PACKET.md) describes
+`build_packet()` output; the original proposal fixtures are historical synthetic
+test support, not that wire specification.
 
 ## Reuse seams (traced in the current tree, not assumed)
 
@@ -11,7 +15,7 @@ the acceptance section at the end is the matrix the implementation is held to.
 | Raw captured item | `data/pages/*.json` | `base.sha`, `base.repo.{id,full_name}`, `head.repo.{id,full_name}` — present in the capture, not projected by `load_prs`, so evidence reads the item |
 | `Reports._read()` | `mcp_server.py` | The authoritative bound-report gate: summary/clusters/dupes/batches/parked, `report_binding`, output digests, recomputed batches/park, changed-during-read check |
 | `tranche.atomic_json()` | `tranche.py` | Atomic JSON publication (`mkstemp` + `fsync` + `os.replace`) |
-| `batch["review_prompt"]`, `batch["id"/"ordinal"/"members"/"count"]` | `out/batches.json` | Copied verbatim as provenance; the prompt is recorded, never used to key evidence |
+| `batch["review_prompt"]`, `batch["id"/"ordinal"/"members"/"count"]` | `out/batches.json` | These fields are projected by `Selection.as_json()`; the exact prompt is provenance, not a code-cache key |
 | `fetch_page()` | `tranche.py` | **Not reused.** It discards status, headers and raw bytes, which evidence requires; its behaviour stays untouched |
 
 `gen_page.py` executes at import and is not importable as a service; evidence never imports it.
@@ -30,7 +34,7 @@ the acceptance section at the end is the matrix the implementation is held to.
 ## Four identities that must not be collapsed
 
 1. **Report association** — repository `full_name` + `report_binding` + the four output
-   digests + the selected `batch` copied unchanged + each member's `source_digest` and
+   digests + the selected batch's five-field projection + each member's `source_digest` and
    `evidence_digest`. Proves *which native report* this evidence belongs to. A batch id
    (`B001`) is a display ordinal and never an identity on its own.
 2. **Code identity** — base and head repository `id` + `full_name`, `base_sha`, `head_sha`
@@ -40,9 +44,13 @@ the acceptance section at the end is the matrix the implementation is held to.
 3. **Mutable observation** — `updated_at`, discussion, reviews, review comments, CI. Timestamped,
    refreshed independently, never able to invalidate code bytes.
 4. **Capture generation** — `capture_id` (128-bit lowercase hex, minted only when a new
-   generation starts) and `generation` = digest over `{format, profile, repository,
-   revision, selection}`. Every source binds to its generation, so historical bytes stay
-   readable and are never rebound.
+   generation starts) and `generation` = digest over `{format, profile, capture_id,
+   repository, revision, membership, batch, report}` in `generation_id()`. Here
+   `membership` is the ordered-number digest, `batch` is the batch ID and `revision`
+   is the string-PR-number-keyed map of base/head SHAs and repository identities.
+   It excludes `updated_at` and the prompt as direct inputs. Every source binds to
+   its generation; reuse in a new association creates rebound records without
+   changing the donor capture or its content-addressed bodies.
 
 ### Reuse and refresh rules (explicit, and each tested)
 
@@ -65,7 +73,7 @@ bytes still describe the revision they claim.
 
 Profile `pr-review/v1` requires, per member, exactly these eight components:
 
-| Component | REST endpoint (real; the #13 fixtures' `/pulls/N/metadata`, `/discussion`, `/checks` do not exist) |
+| Component | Endpoint (real; the proposal fixtures' `/pulls/N/metadata`, `/discussion`, `/checks` do not exist) |
 | --- | --- |
 | `metadata` | `GET /repos/{base}/pulls/{n}` |
 | `diff` | `GET /repos/{base}/pulls/{n}` with `Accept: application/vnd.github.diff` |
@@ -73,11 +81,13 @@ Profile `pr-review/v1` requires, per member, exactly these eight components:
 | `discussion` | `GET /repos/{base}/issues/{n}/comments` |
 | `review_comments` | `GET /repos/{base}/pulls/{n}/comments` |
 | `reviews` | `GET /repos/{base}/pulls/{n}/reviews` |
-| `checks` | `GET /repos/{base}/commits/{head_sha}/check-runs` and `.../status`, recorded under one component |
+| `checks` | `GET /repos/{base}/commits/{head_sha}/check-runs` and `.../status`, plus the corresponding head-repository endpoints when the head is a fork |
 | `closing_issues` | GraphQL `closingIssuesReferences` (query only, never a mutation) |
 
-`checks` keeps check-runs and commit statuses as two separately paginated endpoint
-groups inside one coverage entry and does not assume a missing group means "no CI".
+`checks` keeps `check_runs` and `statuses` as separately paginated base-repository
+groups, plus `fork_check_runs` and `fork_statuses` when the head repository differs.
+They are inside one native `components` entry, not a flattened `coverage` entry;
+a missing group does not mean "no CI".
 
 ## Command semantics
 
@@ -114,20 +124,23 @@ a model, mutates GitHub, opens a browser or executes captured content.
 ```
 out/evidence/                     ← gitignored runtime root (OUT_DIR / "evidence")
   <capture_id>/manifest.json      ← the one atomic checkpoint per capture
-  <capture_id>/sources/<id>.bin   ← immutable raw response bytes, sha256-named
+  bodies/<sha256>.bin            ← immutable response bytes, shared by body digest
   <capture_id>.lock               ← advisory writer lock, stale-recoverable
 ```
 
 The manifest carries `format`, `profile`, `capture_id`, `generation`, repository/revision
-identity, the copied native selection, `capture` (limits/usage/stop reason), `coverage`,
-`sources` and `citations`. Bodies are stored once and referenced by id, so saving one page
+identity through the frozen native selection, `code_observation`, `capture`
+(limits/usage/stop reason), `components`, `sources` and `citations`. Bodies are
+stored once and referenced by `body_sha256`, so saving one page
 never rewrites a packed export. `--output -` writes the packet to stdout; a file path may
 be outside the repository, but packet-supplied paths are never honoured: the destination
 comes only from the operator.
 
 Write order is body → fsync → manifest (atomic replace), so a crash between the two leaves
 an unreferenced body (harmless, swept on the next run) and never a manifest citing missing
-bytes. Reads verify the stored bytes' sha256 before exposing them. The lock is a file
+bytes. The exported packet projects this manifest and includes a digest-keyed
+`bodies` map containing `{sha256, bytes, base64}`, not inline source bodies.
+Reads verify the stored bytes' sha256 before exposing them. The lock is a file
 holding pid/start time with a bounded TTL; `--break-lock` recovers an interrupted writer,
 and no lock survives its process's death unnoticed.
 

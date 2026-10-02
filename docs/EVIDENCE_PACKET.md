@@ -1,231 +1,251 @@
-# Proposed portable evidence packet v1
+# Native evidence packet v1
 
-Draft for [issue #9](https://github.com/blackopsrepl/Tranche/issues/9), following
-[Vittorio's requested first contribution](https://github.com/blackopsrepl/Tranche/issues/9#issuecomment-5929341489).
-This proposes the packet format for the native Tranche evidence workflow being
-built in this repository. Tranche will let users select a batch, capture its
-source material, inspect citations, resume a partial capture and export the
-packet. The capture implementation, native state and packet format will be
-maintained here and shipped as Tranche, with the CLI, workbench and read-only MCP
-sharing the same evidence.
+This documents the export produced by Tranche's native
+[`evidence.py`](../evidence.py), specifically `build_packet()` and
+`packet_bytes()`. The implementation on master is authoritative for the native
+wire format; the architecture is recorded in
+[native-evidence-cli.md](decisions/native-evidence-cli.md) and commands in
+[EVIDENCE_CLI.md](EVIDENCE_CLI.md).
 
-Users will be able to complete that workflow in Tranche without another
-application. External tools may optionally consume exported
-packets.
+The original portable-packet proposal for
+[issue #9](https://github.com/blackopsrepl/Tranche/issues/9), following
+[Vittorio's requested first contribution](https://github.com/blackopsrepl/Tranche/issues/9#issuecomment-5929341489),
+contributed the integrity, exact-byte citation, explicit incompleteness and
+resume conformance work. That work is preserved as historical test support,
+not the native wire specification. In particular, its `coverage` and inline
+`body_base64` records are **not** the native export's `components` and
+content-addressed `bodies` map. Both use the same format/profile labels; those
+labels alone do not establish compatibility between the two layouts.
 
-This PR covers the proposed contract and offline conformance cases, and - since a
-contract with no implementation behind it cannot be accepted - the native
-implementation it describes is implemented in this same PR. The CLI, its native
-state and the packet format are maintained in this repository and shipped as
-Tranche; the workbench and the read-only MCP server are intended to read the same
-evidence rather than acquiring or reinterpreting it.
+Capture, inspection, resume and export are native Tranche operations. No
+external reader or application is required. An optional reader can inspect an
+export offline because it includes the response bytes needed to resolve its
+citations. Workbench publication and MCP evidence retrieval remain follow-ups
+on the same native service, not dependencies of the CLI workflow.
 
-## Envelope and identity
+## Export envelope
 
-The packet is one UTF-8 JSON object with the following required fields. Inspect
-the [partial example](../tests/fixtures/evidence/partial.json) and
-[resumed example](../tests/fixtures/evidence/resumed.json) for complete records.
-Unexpected fields are refused in v1, except inside the copied native `batch`.
+The export is one UTF-8 JSON object. `build_packet()` emits these fields:
 
-| Field | Meaning |
+| Field | Native meaning |
 | --- | --- |
 | `format` | `tranche.evidence-packet/v1` |
-| `profile` | `pr-review/v1`, requiring all eight components below for every member |
-| `selection` | Immutable repository, native report, selected batch and ordered member revisions |
-| `membership_digest` | SHA-256 of the ordered list of PR numbers |
-| `capture_id` | Random 128-bit lowercase hex identity assigned once when starting a capture |
-| `generation` | SHA-256 of `{format, profile, selection, capture_id}` |
-| `complete` | True exactly when every member/component has complete pagination |
-| `capture` | Observation time, per-run request limit/usage, explicit stop reason |
-| `coverage` | Exactly one record per member/component; missing evidence remains visible |
-| `sources` | Captured source bytes with identity, URL, timestamp and pagination |
-| `citations` | Exact source and byte-range bindings |
-| `packet_digest` | SHA-256 of the whole packet with this field omitted |
+| `profile` | `pr-review/v1` |
+| `capture_id` | Random 128-bit lowercase hex identity assigned to a capture |
+| `generation` | Digest computed by `generation_id()` as described below |
+| `selection` | The frozen `Selection.as_json()` projection |
+| `membership_digest` | SHA-256 object digest of the ordered PR-number list |
+| `complete` | `is_complete()`: no truthy capture stop reason and every component status is `complete` |
+| `capture` | Observation time and last-run request accounting, including the stop reason |
+| `components` | Native per-member/component state, including endpoint groups |
+| `sources` | Acquisition records referencing response bodies by digest |
+| `bodies` | Map from body digest to `{sha256, bytes, base64}` |
+| `citations` | Source bindings and exact byte ranges |
+| `notes` | Native explanatory text about integrity, observation and completeness limits |
+| `packet_digest` | Object digest of the packet before this field is added |
 
-`selection.repository` contains a positive numeric GitHub repository `id`, exact
-`full_name` and `visibility: public`. Both ID and name participate in identity;
-a rename, transfer or visibility change is a gate, not a silent URL rewrite.
+The packet is a projection, not a copy of the persistence manifest. Manifest-only
+fields such as `created_at`, `updated_at`, `code_observation` and capture
+`bytes_stored` are not exported by `build_packet()`. There is no top-level
+`coverage` or `members`, and sources do not contain inline `body_base64`.
+This describes producer output, not a separate imported-packet validator or a
+promise that every unknown field is refused.
 
-`selection.report` contains the native `report_binding` and `output_digests`
-for `clusters.json`, `dupes.json`, `batches.json`, and `parked.json` (null only
-when the native park file is absent and permitted by the existing loader).
-These are the **existing parsed-object digests**, not file-byte checksums.
-`selection.batch` is the whole selected native batch, unchanged: ID, ordinal,
-ordered membership, count, diagnostics and exact `review_prompt`. A batch ID
-such as B001 is a display ordinal, never a cache identity on its own.
+## Selection and identity
 
-Resume looks up the existing active capture for that selection and retains its
-`capture_id`; it does not mint one per run. An explicitly fresh observation can
-start a new capture even if revisions are unchanged (for example, CI results
-changed). It gets a new ID/generation and does not overwrite frozen old sources.
+`Selection.as_json()` returns exactly `repository`, `report`, `batch` and
+`members`:
 
-`selection.members` is in the batch's exact order. Each entry contains `number`,
-the native `source_digest` and `evidence_digest`, full 40-character `base_sha`
-and `head_sha`, and `updated_at`. The native source/evidence digests retain
-their existing distinct meanings; source bytes below have their own digest.
-The report's projection does not currently supply a full base revision: future
-capture must resolve it from PR metadata, verify head/update identity against
-the selected report, and bind the resolved base here. Unknown or short revisions
-cannot be substituted. Changed base, head or update time requires a new selection
-and generation, even if the ordinal and membership are unchanged.
+- `repository` is the native repository identity object passed to `Selection`.
+  Native selection records the base repository's numeric `id` and exact
+  `full_name` from captured PR metadata. Its visibility is initially `unknown`;
+  export checks live public scope separately, without rewriting this projection.
+- `report` carries `report_binding` and `output_digests` for `clusters.json`,
+  `dupes.json`, `batches.json` and `parked.json`. These are the existing native
+  parsed-object digests, not file-byte checksums; an absent permitted park file
+  is represented by a null digest.
+- `batch` is a **projection**, not the entire native batch object. Its keys are
+  exactly `id`, `ordinal`, `members`, `count` and `review_prompt`. Ordered
+  membership and the exact reviewer prompt are retained; diagnostics and other
+  native batch fields are not copied into this projection.
+- `members` is ordered with the batch. Each entry contains exactly `number`,
+  `source_digest`, `evidence_digest`, `base_sha`, `head_sha`, `base_repo_id`,
+  `base_repo_name`, `head_repo_id`, `head_repo_name`, `head_fork` and `updated_at`.
+  Base/head revisions are full lowercase 40-character Git SHA-1 identifiers.
+  Native selection reads the raw captured PR item for repository and base
+  identity, rather than inventing missing projection fields.
 
-An exporter must first pass the existing report gates: current snapshot,
-judgment/pair bindings, summary output digests, exact recomputed batches and
-park state. `mcp_server.Reports.pick()` already applies those gates and returns
-the same batch/prompt as the workbench. Copy its selected batch and digests;
-resolve repository ID and revisions through the explicitly selected local read
-transport. Validate inputs before and after export to refuse concurrent changes.
-The executable spec accepts `expected_selection` from this validated context;
-without it, successful validation proves **internal consistency only**.
+Selection uses the authoritative bound-report loader in
+[`report_loader.py`](../report_loader.py), shared with the report consumers.
+Opaque report digests associate evidence with a validated report; they neither
+reconstruct that report offline nor authenticate the source bytes. A batch ID
+such as `B001` is a display ordinal, never a sufficient evidence identity.
 
-The packet need not contain the whole discovery corpus or model cache. Opaque
-native report digests are anchors to an independently validated report, not
-enough to reconstruct or authenticate it offline. Source evidence for the
-selected batch is carried in full. Any future provider/report schema work is
-separate from this proposal.
+`generation_id(selection, capture_id)` computes the native object digest of:
 
-## Digest and source-byte rules
+```python
+{
+    "format": FORMAT,
+    "profile": PROFILE,
+    "capture_id": capture_id,
+    "repository": selection.repository,
+    "revision": selection.revision(),
+    "membership": selection.membership_digest,
+    "batch": selection.batch["id"],
+    "report": selection.report,
+}
+```
 
-All named digests are lowercase SHA-256 hex. Object digests use the existing
-Tranche encoding: JSON sorted keys, separators `(',', ':')`, `ensure_ascii=False`,
-`allow_nan=False`, then UTF-8 without BOM or trailing newline. Arrays retain
-order; strings retain their Unicode form. Duplicate keys, NaN/Infinity and
-invalid UTF-8 are rejected. Structural integer fields refuse JSON booleans.
-This is Tranche's encoding, not a claim of general RFC 8785 canonicalization;
-other languages must reproduce the provided vectors, including native batch
-numbers. Git revisions are lowercase 40-character hex, not SHA-256 digests.
+`selection.revision()` maps each PR number **as a string** to exactly
+`base_sha`, `head_sha`, `base_repo_id`, `base_repo_name`, `head_repo_id` and
+`head_repo_name`. The formula is not a digest of the entire selection.
+`updated_at`, the reviewer prompt and `head_fork` are not direct inputs to this
+revision map or the generation formula; report association remains an input,
+so report-digest changes can still change the generation.
 
-Every `sources` record contains:
+A base/head or repository-identity move prevents reuse of that recorded code
+observation. Thread-only updates refresh mutable observations without making
+unchanged code bytes invalid. Report/prompt/batch changes can establish a new
+association while reusing content-addressed code bodies; copied acquisition
+records and citations are rebound to the new generation, leaving the donor
+capture intact. Within a resumed generation, mutable refresh can make component
+state incomplete again. Thus neither a universal nonregression promise nor
+"every `updated_at` change requires a new generation" describes native state.
+See `Capture._refresh_mutable()` and `carry_over_code()` in `evidence.py`.
 
-| Field | Meaning |
+## Sources, bodies and citations
+
+Each exported source has exactly these keys:
+
+| Fields | Meaning |
 | --- | --- |
-| `number`, `component`, `page` | Member PR, one required component, contiguous 1-based page |
-| `cursor`, `next_cursor` | Opaque continuation labels; first cursor and terminal next cursor are null |
-| `url` | Public source URL, useful for provenance; inspection does not require fetching it |
-| `media_type` | `application/json`, `text/plain`, or `text/x-diff` |
-| `captured_at` | UTC acquisition timestamp |
-| `body_base64` | Canonical base64 of exact response-body bytes after HTTP content decoding |
-| `body_sha256` | SHA-256 of those decoded bytes, not JSON reserialization |
-| `id` | SHA-256 of `{generation, source}` with the source's own `id` omitted |
+| `id` | Digest of `{generation, source}` using the acquisition source record with its own `id` omitted |
+| `number`, `component`, `group`, `page` | Member, component, endpoint group and 1-based page within that group |
+| `cursor`, `next_cursor` | Recorded continuation values; REST uses URLs and GraphQL uses cursors |
+| `url`, `accept`, `media_type` | Acquisition URL, requested representation and recorded response media type |
+| `captured_at`, `generation` | Acquisition timestamp and capture-generation binding |
+| `body_sha256` | SHA-256 of the exact decoded response bytes |
 
-The conformance profile uses `https://api.github.com/repos/OWNER/REPO/` REST
-source URLs or `https://api.github.com/graphql` for closing-issue queries.
-GraphQL URLs alone cannot identify a PR; the recorded number/component and
-actual returned repository/PR identity must agree at acquisition time. Other
-source namespaces need an explicit profile extension with checked scope.
-The synthetic bodies are deliberately opaque text, including Unicode and hostile
-instructions. Source/page/revision association is a recorded acquisition claim;
-hashes do not prove GitHub served it. Future capture must check actual returned
-metadata/revisions and response pagination, rather than trusting declarations.
+Source IDs bind the acquisition record, not a body-bearing packet record. The
+record includes its own `generation` as well as the outer generation used in
+its ID calculation. Different sources can reference the same body digest.
 
-There are no external artifact paths, executable commands, authorization headers,
-credentials or transport configuration fields. URLs must not carry credentials.
-Do not normalize line endings, trim text, reserialize JSON or silently redact
-captured evidence while retaining its old digest. If source content cannot be
-exported safely, leave that component explicitly blocked and explain why.
-Never execute source text or patches. Browser rendering must escape it.
+`bodies[source.body_sha256]` contains:
 
-Each citation has a unique `id`, `source_id`, `source_sha256`, `start_byte`,
-`end_byte` and `excerpt_sha256`. Ranges are nonempty, zero-based, half-open
-**byte** offsets into decoded source bytes. The excerpt digest covers exactly
-that slice; there is no codepoint/line-number ambiguity. Rebind neither the
-source nor the citation to a newer revision. An offline reader can decode the
-source and inspect the slice without Tranche installed or GitHub access.
+- `sha256`: the same lowercase body digest as the map key;
+- `bytes`: decoded byte length;
+- `base64`: standard base64 encoding of the exact response bytes.
 
-## Coverage, budgets, interruption and resume
+`build_packet()` reads and verifies each distinct stored body once. It does not
+normalize line endings, trim text or reserialize captured JSON. Native runtime
+storage is `out/evidence/bodies/<sha256>.bin`, shared across capture manifests;
+these local paths are not exported. The packet needs no state store or network
+for byte inspection.
 
-`pr-review/v1` requires `metadata`, `diff`, `files`, `discussion`,
-`review_comments`, `reviews`, `checks`, and `closing_issues` for each member.
-Coverage records contain `number`, `component`, `status`, ordered `source_ids`,
-`next_cursor` and `reason`. Status is one of:
+Every citation has `id`, `number`, `component`, `source_id`, `source_sha256`,
+`start_byte`, `end_byte`, `excerpt_sha256` and `kind`. The range is a nonempty,
+zero-based, half-open **byte** interval in the decoded source body, not a
+codepoint or line interval. Resolve `source_id` in `sources`, verify its body
+binding, decode the corresponding `bodies` entry, and check the SHA-256 of the
+slice against `excerpt_sha256`. Empty captured bodies do not require fabricated
+citations. Native inspection also provides bounded source/citation retrieval.
 
-- `missing`: no captured page, null cursor, nonempty reason.
-- `partial`: captured prefix with a non-null continuation and nonempty reason.
-- `complete`: at least one page, terminal null cursor, null reason. An empty
-  collection needs a captured empty response, not an invented absence.
-- `blocked`: nonempty reason; previously captured pages may be retained.
+URLs record provenance, not permission to execute or fetch source text. Treat
+all captured content as untrusted: never execute patches or embedded
+instructions, and escape it for display. Digests show integrity of recorded
+bytes, not proof that GitHub served them or that evidence is still current.
 
-Pages must belong to that member/component/generation, start at page 1, have
-contiguous page numbers and linked nonrepeating cursors. No orphan or duplicate
-sources are allowed. The continuation on the last source must agree with the
-coverage cursor. Declared `complete` does not mean full review, test execution,
-source authenticity, current CI, duplicate equivalence or merge approval.
+## Component state and completeness
 
-`capture` contains UTC `observed_at`, `request_limit`, `requests_used` and
-`stop_reason`: null, `request_budget`, `storage_budget`, `interrupted`,
-`transport_error`, `visibility_revoked`, or `revision_drift`. Every attempted
-network request counts, including failures and identity/pagination checks;
-budget exhaustion has used == limit. Counts refer to the last run, not all
-runs or the number of retained sources. Partial observations may have a null
-stop reason when acquisition simply has not run yet. Complete packets cannot
-have a stop reason. Timestamps use `YYYY-MM-DDTHH:MM:SSZ` in this profile.
+`pr-review/v1` has eight components per member: `metadata`, `diff`, `files`,
+`discussion`, `review_comments`, `reviews`, `checks` and `closing_issues`.
+Each component entry starts with `number`, `component`, `status`, `reason` and
+`groups`. Each group starts with `group`, `status`, `pages`, `next_url`, ordered
+`source_ids` and `reason`; acquisition can add count fields such as
+`items_observed` and `items_reported`. `build_packet()` exports component state
+as held in the manifest, not a fixed flattened coverage schema.
 
-Persist progress atomically before stopping. Resume against the same immutable
-selection/profile preserves the generation and all previous source/citation
-records, adds pages, never regresses complete coverage, and produces a different
-packet digest when progress changes. Repeating completed work may reuse the
-same bytes without requests; it does not certify live freshness. If GitHub
-revisions drift or visibility is revoked during acquisition, the stopped
-generation cannot resume. Retain it for inspection
-and start a fresh one after regenerating/validating the report as needed. Never
-mix old source IDs into the new generation. The
-[revision-drift fixture](../tests/fixtures/evidence/revision-drift.json) shows
-the same B001 with a changed head/update time and a distinct generation.
+The REST components each have one same-named group. `closing_issues` has one
+GraphQL group. `checks` has independently paginated `check_runs` and `statuses`
+for the base repository, plus `fork_check_runs` and `fork_statuses` only when
+the head repository differs from the base. Fork CI is a separate observation,
+not a substitute for the PR's base-repository CI. Real endpoints are documented
+in the [architecture note](decisions/native-evidence-cli.md); the proposal's
+synthetic `/pulls/N/metadata`, `/discussion` and `/checks` URLs are not GitHub
+REST endpoints.
 
-Consumers bound the **whole serialized packet**, including base64 expansion,
-citations and metadata, before JSON parsing, and bound any resulting record
-before persistence. The conformance harness uses a deliberately small 1 MiB
-ceiling and tests exact-size acceptance and one-byte overflow; it is not a CLI
-storage-default decision. Native acquisition will additionally need bounded
-streaming, response/page counts and storage accounting. The wire format avoids
-artifact paths entirely. Future filesystem persistence must separately confine
-paths beneath its selected root, reject unsafe links and support crash recovery.
+Statuses are `missing`, `partial`, `complete` or `blocked`. Fresh groups have
+zero pages, no continuation, no sources, and reason `not acquired`.
+`roll_up()` uses this precedence: any blocked group makes the component blocked;
+otherwise any missing group makes it missing; otherwise all complete groups
+make it complete; otherwise it is partial. Complete components have null
+reason; other reasons aggregate group problems.
 
-Sharing additionally requires a fresh local read confirming the same public
-repository ID/name. Unknown visibility, revocation or drift stops sharing; do
-not infer permission from a previously public packet. A synthetic sharing check
-is supplied, not live policy enforcement. CLI capture remains read-only and
-model-free. The workbench only displays deliberately published packets and never
-acquires evidence with browser credentials; MCP should use bounded read/retrieve
-operations over these same bytes. Existing MCP response limits still apply:
-large packets need progressive retrieval, not an unbounded inline tool result.
+A terminal continuation alone does not establish content coverage. Acquisition
+records captured empty responses, reported/observed count gaps, page caps,
+truncation and failures rather than silently treating unknowns as empty.
+`is_complete()` checks component statuses and the capture stop reason; it does
+not independently revalidate all pagination/content claims when serializing.
+Completeness is not a review, a test performed by Tranche, current CI, source
+authenticity, duplicate equivalence or approval to merge.
 
-## Executable cases and remaining decisions
+## Accounting, serialization and sharing
 
-Run `python3 -m unittest tests.test_evidence_packet -v` or the existing
-`make check`. [evidence_contract.py](../tests/evidence_contract.py) is test support
-for the proposed contract, not the native implementation. Its checks cover:
+The exported `capture` keys are exactly `observed_at`, `request_limit`,
+`requests_used`, `reserved`, `failures`, `retries`, `identity_checks` and
+`stop_reason`. Accounting describes the acquisition run, not the number of
+retained sources or a lifetime request total. Reserved completion-check capacity
+can cause a request-budget stop before the full limit has been spent. Timestamps
+produced by native `now()` are UTC seconds (`YYYY-MM-DDTHH:MM:SSZ`).
 
-- Partial capture with a paginated files prefix, preserved resume, revision
-  drift, nonregressing pages and immutable prior citations.
-- Exact decoded bytes, multibyte citation slices, corrupt/dangling/duplicate
-  sources and citations, incomplete pagination and misleading completeness.
-- Native synthetic report/batch generation and MCP selection, exact prompts,
-  stale output/report bindings, reordered members and foreign repository identity.
-- Whole-record/request limits, malformed JSON, unexpected artifact fields,
-  public scope and a synthetic visibility/identity sharing gate.
+Object digests use `tranche.digest()`: sorted JSON keys, separators `(',', ':')`,
+`ensure_ascii=False`, `allow_nan=False`, then UTF-8. Arrays retain order. This is
+Tranche's encoding, not a claim of RFC 8785 canonicalization. Body and excerpt
+digests hash raw bytes instead of object serialization.
 
-All three JSON fixtures use **invented repository/PR identities and source
-bytes**; no captured project data, private datasets, provider patch or external
-package is included. Their report/batch fields were generated by today's native
-producer with synthetic inputs. Tests also generate fresh native bindings rather
-than treating the fixture hashes as production trust anchors.
+`packet_bytes()` uses that JSON encoding without a trailing newline, and checks
+the exact serialized size against its export limit (default 64 MiB), including
+base64 expansion and metadata. The proposal harness's 1 MiB ceiling is not this
+native export default or the MCP delivery contract. Native strict JSON loading
+and storage/transport protections are implementation concerns, not evidence
+that the historical harness validates native packets.
 
-Settled by the implementation now in this PR, and recorded here rather than asked
-as an open question: `pr-review/v1` is the profile this repository builds against;
-CI is captured as **two separated collections** (check-runs and commit statuses,
-read from both the base repository and a linked fork, since a PR's own checks live
-in the base repository and a check-runs response cannot show the fork's); the
-packet's byte offsets are byte-based and its timestamps are UTC seconds, so no
-subsecond precision is added. Native persistence, the finite budgets and the
-bounded retrieval path are implemented, not deferred: see
-[native-evidence-cli.md](decisions/native-evidence-cli.md) for the design and
-[EVIDENCE_CLI.md](EVIDENCE_CLI.md) for the implemented behaviour.
+The CLI export path validates association, runs a fresh public-scope sharing
+check for the base and linked repositories, and checks report inputs for
+concurrent changes before publishing. Historical export is explicit and never
+claims current-batch compatibility. `build_packet()` and `packet_bytes()` alone
+do not perform that live gate. CLI capture is read-only toward GitHub and
+model-free; a prior public packet is not ongoing sharing permission.
 
-Still open, and explicitly not claimed here: publication of captured evidence to
-the workbench or through MCP retrieval, which remains follow-up work on the same
-native service. The acceptance work this proposal listed as future - live capture,
-concurrent-file safety, full path-confinement tests, transport/pagination
-verification, revision rechecks and a real read-only GitHub trial - is covered by
-the implementation's own tests and its live trial; the offline conformance cases
-here still claim nothing about live behaviour themselves.
+## Verification and preserved proposal cases
+
+Native implementation tests are in
+[`tests/test_evidence.py`](../tests/test_evidence.py) and transport tests in
+[`tests/test_ghread.py`](../tests/test_ghread.py):
+
+```bash
+python3 -m unittest tests.test_evidence tests.test_ghread -v
+```
+
+The original proposal's
+[`tests/evidence_contract.py`](../tests/evidence_contract.py) and
+[`tests/test_evidence_packet.py`](../tests/test_evidence_packet.py) remain
+valuable **historical synthetic conformance support**:
+
+- [partial.json](../tests/fixtures/evidence/partial.json),
+  [resumed.json](../tests/fixtures/evidence/resumed.json) and
+  [revision-drift.json](../tests/fixtures/evidence/revision-drift.json) preserve
+  the proposed flattened coverage/inline-body layout.
+- They use invented repository/PR identities and source bytes, with synthetic
+  native report/batch inputs. They are not captured GitHub evidence or examples
+  emitted by `build_packet()`.
+- They exercise exact-byte integrity, multibyte slices, corrupt/dangling records,
+  partial/resumed pagination, budgets and synthetic identity gates under that
+  proposal. Passing them does not demonstrate native wire compatibility or live
+  acquisition behaviour.
+
+Run those preserved cases with
+`python3 -m unittest tests.test_evidence_packet -v`. Keeping them credits and
+retains the proposal work without requiring native state or exports to conform
+to its historical layout. Any native wire-format claim must instead be checked
+against the native producer and its tests.
