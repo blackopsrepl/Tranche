@@ -1,0 +1,70 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  verify:
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v4
+
+      # The runner image carries a toolchain, but the repository's pinned one is
+      # what the tests must run against.
+      - name: Toolchain
+        run: |
+          if ! command -v rustup >/dev/null 2>&1; then
+            echo "rustup is absent from the runner image" >&2
+            exit 1
+          fi
+          rustup show
+          rustc --version
+
+      # The pipeline reproduces committed artifacts byte for byte, so the tests
+      # read the real corpus in the checkout. Nothing here calls a model or
+      # reaches the network.
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Workbench
+        run: |
+          if command -v node >/dev/null 2>&1; then
+            node --test tests/workbench.test.cjs
+          else
+            echo "node is absent from the runner image; workbench tests skipped" >&2
+          fi
+
+      - name: Whitespace
+        run: git diff --check
+
+  # The binary must build and run where no interpreter is installed. This is the
+  # claim the project makes, so it is a gate rather than an assertion.
+  binary:
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: cargo build --locked --release -p tranche-cli
+      - name: The command tree opens
+        run: ./target/release/tranche --help
+      - name: A root without reports is refused, not crashed
+        run: |
+          set +e
+          ./target/release/tranche --root "$(mktemp -d)" cluster >/dev/null 2>err.txt
+          status=$?
+          set -e
+          test "$status" -ne 0
+          ! grep -qi 'panic' err.txt

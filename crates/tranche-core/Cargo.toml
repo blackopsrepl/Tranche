@@ -1,0 +1,40 @@
+[package]
+name = "tranche-core"
+description = "Tranche core: report gate, pipeline domain and the read projection"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+# `arbitrary_precision` is required, not an optimization: without it serde_json
+# parses a float literal to the nearest f64 it can represent, which for values
+# like 0.9400000000000001 is a *different* double than the one the stored report
+# holds. Report bindings digest those numbers, so the difference makes every
+# report read as foreign.
+#
+# `preserve_order` is required for the same class of reason. The stored artifacts
+# keep insertion order, so `clusters.json` leads with the `security-review`
+# meta-category that the pipeline deliberately puts first. A `Map` backed by a
+# sorted tree would instead emit `agents-ai` first: the digest still matches,
+# because `digest` sorts keys explicitly, so the divergence is invisible to every
+# check except reading the file.
+serde_json = { workspace = true, features = ["arbitrary_precision", "preserve_order"] }
+regex = "1"
+sha2 = "0.10"
+# The Jev client is one HTTPS POST to a fixed endpoint. `reqwest` carries the TLS
+# stack; `tokio` drives the retry backoff, which is the only async here.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
+tempfile = { workspace = true }
+time = { version = "0.3", features = ["formatting"] }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = { workspace = true }
+libc = "0.2"
+

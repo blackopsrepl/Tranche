@@ -29,7 +29,8 @@ test support, not that wire specification.
 - `tests/test_ghread.py`, `tests/test_evidence.py` — offline synthetic suites.
 - `docs/decisions/native-evidence-cli.md` (this note), `docs/EVIDENCE_CLI.md`
   (user documentation, written from implemented behaviour at the end).
-- `evidence` subparser wired into `tranche.py`'s existing `argparse` entry point.
+- `evidence` subparser owned by `evidence.py`, exposed through the native `tranche
+  evidence ...` command tree.
 
 ## Four identities that must not be collapsed
 
@@ -92,13 +93,13 @@ a missing group does not mean "no CI".
 ## Command semantics
 
 ```
-tranche.py evidence capture --batch B001 [--request-budget N] [--fresh]
-                                  [--reuse-capture ID] [--json]
-tranche.py evidence show    --batch B001 [--json]
-tranche.py evidence show    --capture ID [--json]
-tranche.py evidence show    --capture ID --source SOURCE_ID
-                            [--start-byte N] [--length N] [--raw] [--json]
-tranche.py evidence export  --batch B001 --output FILE [--capture ID] [--json]
+tranche evidence capture --batch B001 [--request-budget N] [--fresh]
+                               [--reuse-capture ID] [--json]
+tranche evidence show    --batch B001 [--json]
+tranche evidence show    --capture ID [--json]
+tranche evidence show    --capture ID --source SOURCE_ID
+                         [--start-byte N] [--length N] [--json]
+tranche evidence export  --batch B001 --output FILE [--capture ID] [--json]
 ```
 
 - `capture` validates the current native selection, acquires or resumes, prints the capture
@@ -193,9 +194,10 @@ terminal/HTML control content, duplicate JSON keys, non-finite values, integer b
 path escape, symlink attacks, hostile `next` links, redirects off the allowed origins,
 foreign resource identity, repeated cursors/ids, bad counts, mid-pagination edits.
 
-**Operational.** Human and JSON output, help/README/Makefile integration, `make test` and
-`make check` green, existing commands/reports/MCP/workbench unchanged when evidence is
-absent, discovery and model caches untouched, no GitHub mutations from evidence commands.
+**Operational.** Human and JSON output, help/README/Makefile integration, `make check` and
+`make native-check` green, existing commands/reports/MCP/workbench unchanged when evidence
+is absent, discovery and model caches untouched, no GitHub mutations from evidence
+commands.
 
 **Remaining work not in this PR.** Workbench publication of evidence and MCP read/retrieve
 adapters (bounded schemas, progressive retrieval) are follow-ups; #9 is not closed by this

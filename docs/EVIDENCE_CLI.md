@@ -4,10 +4,13 @@ Capture the public GitHub evidence of a Tranche batch, inspect it offline, resum
 an interrupted capture and export a self-contained packet — all with Tranche.
 
 ```bash
-python3 tranche.py evidence capture --batch B001 --request-budget 100
-python3 tranche.py evidence show    --batch B001
-python3 tranche.py evidence export  --batch B001 --output review-packet.json
+tranche evidence capture --batch B001 --request-budget 100
+tranche evidence show    --batch B001
+tranche evidence export  --batch B001 --output review-packet.json
 ```
+
+Requires the `tranche` binary (`make cli-install`, or `cargo install --path .`).
+Run it from the checkout, or pass `--root /path/to/Tranche` from anywhere.
 
 Evidence capture is **optional, read-only toward GitHub and model-free**. It never
 runs a model, never writes to GitHub, never executes a patch or source file, and

@@ -138,7 +138,10 @@ test('browser workbench renders safe text, inspects PRs, restores focus and URL 
       server.once('error', reject);
     });
     try {
-      const output = await new Promise((resolve, reject) => execFile(chromium, ['--headless', '--no-sandbox', '--disable-gpu', '--force-prefers-reduced-motion', '--virtual-time-budget=8000', '--dump-dom', `http://127.0.0.1:${port}/`], {encoding: 'utf8', timeout: 30000, maxBuffer: 4 * 1024 * 1024}, (error, stdout) => error ? reject(error) : resolve(stdout)));
+      // A cold CI runner can take well over 30s to fetch a 5.5 MB payload and
+      // render; when the timeout fires, chromium is killed and the probe never
+      // writes its verdict, which reads as `undefined` rather than a timeout.
+      const output = await new Promise((resolve, reject) => execFile(chromium, ['--headless', '--no-sandbox', '--disable-gpu', '--force-prefers-reduced-motion', '--virtual-time-budget=8000', '--dump-dom', `http://127.0.0.1:${port}/`], {encoding: 'utf8', timeout: 120000, maxBuffer: 4 * 1024 * 1024}, (error, stdout) => error ? reject(error) : resolve(stdout)));
       const result = output.match(/<pre id="probe-result">([^<]*)<\/pre>/)?.[1];
       assert.equal(result, 'BROWSER_PASS');
     } finally { server.close(); }
