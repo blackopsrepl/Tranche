@@ -380,7 +380,9 @@ class CaptureTests(EvidenceTests):
         # Every request was an explicit, bounded, credential-free GET.
         for call in gh.calls:
             self.assertEqual(call["repo_prefix"] in (BASE_NAME, FORK_NAME), True)
-        self.assertEqual(len(manifest["sources"]), len(gh.calls))
+        # REST sources plus GraphQL sources exclude both rounds of identity reads.
+        self.assertEqual(len(manifest["sources"]),
+                         len(gh.calls) + len(gh.graphql_calls) - 2 * len(self.selection().members))
 
     def test_requests_name_real_endpoints_and_media_types(self):
         self.build_report()
@@ -492,12 +494,13 @@ class IdentityTests(EvidenceTests):
                metadata_payload(moved, head_sha=HEAD_SHA2))
         with self.assertRaises(evidence.SelectionError):
             self.capture(gh2, capture_id=capture_id)
-        # The recorded bytes and the previous checkpoint are untouched.
+        # Recorded bytes remain available; the generation is invalidated.
         reread = evidence.read_manifest(capture_id)
         self.assertEqual({s["id"]: s["body_sha256"] for s in reread["sources"]},
                          sources_before)
         self.assertEqual(reread["generation"], manifest["generation"])
-        self.assertTrue(evidence.is_complete(reread))
+        self.assertFalse(evidence.is_complete(reread))
+        self.assertEqual(reread["capture"]["stop_reason"], "revision_drift")
         for source in reread["sources"]:
             evidence.read_body(source["body_sha256"])
 

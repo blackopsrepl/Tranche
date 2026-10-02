@@ -262,7 +262,8 @@ class Lock:
                         age = time.time() - self.path.stat().st_mtime
                     except OSError:
                         age = 0
-                    stale = stale or age > self.ttl
+                    # Age alone never grants permission to replace a live writer.
+                    stale = stale and age > self.ttl if not owner else stale
                 if break_lock or stale:
                     self._release_file()
                     if attempt == 1:
@@ -560,7 +561,8 @@ def store_body(data: bytes) -> str:
 
 def read_body(body_sha256: str) -> bytes:
     """Read stored bytes, verifying them against their digest before returning."""
-    path = body_path(body_sha256)
+    body_path(body_sha256)  # validate the digest before deriving a confined path
+    path = confined_file(f"bodies/{body_sha256}.bin", root())
     if not path.exists():
         raise EvidenceError(f"stored source {body_sha256[:12]}… is missing")
     data = path.read_bytes()
@@ -911,7 +913,7 @@ class LiveCheck:
     def __init__(self, budget: ghread.Budget):
         self.budget = budget
 
-    def verify_pr(self, member: dict) -> dict:
+    def verify_pr(self, member: dict, *, reserve=None) -> dict:
         """Re-read the PR's own revisions and prove the recorded ones still hold.
 
         This is the check that makes reuse honest: checksums prove bytes were not
@@ -921,7 +923,7 @@ class LiveCheck:
         """
         url = source_url(member["number"], "metadata", "metadata", member)
         self.budget.identity_checks += 1
-        response = ghread.read(url, accept=JSON_MEDIA, budget=self.budget,
+        response = ghread.read(url, accept=JSON_MEDIA, budget=self.budget, reserve=reserve,
                                repo_prefix=member["base_repo_name"])
         data = response.json()
         if not isinstance(data, dict) or data.get("number") != member["number"]:
@@ -1019,6 +1021,7 @@ class Capture:
         self.capture_id = capture_id
         self.manifest = manifest
         self.budget = budget
+        self.budget.reserved = max(self.budget.reserved, len(selection.members))
         self.live = LiveCheck(budget)
         self.max_bytes = max_bytes
         self.max_pages = max_pages
@@ -1224,7 +1227,7 @@ class Capture:
             runs = payload.get("check_runs")
             if not isinstance(runs, list):
                 raise _Blocked("check-runs response carries no check-run list")
-            state["items_seen"] = state.get("items_seen", 0) + len(runs)
+            state["items_seen"] = state.get("items_observed", 0) + len(runs)
             if type(payload.get("total_count")) is int:
                 state["items_total"] = payload["total_count"]
         elif component == "checks" and group in ("statuses", "fork_statuses"):
@@ -1233,7 +1236,7 @@ class Capture:
             statuses = payload.get("statuses")
             if not isinstance(statuses, list):
                 raise _Blocked("combined status response carries no status list")
-            state["items_seen"] = len(statuses)
+            state["items_seen"] = state.get("items_observed", 0) + len(statuses)
             if type(payload.get("total_count")) is int:
                 state["items_total"] = payload["total_count"]
         elif not isinstance(payload, list):
@@ -1328,6 +1331,8 @@ class Capture:
 
     def run(self) -> str | None:
         """Acquire everything missing, reusing what the live revision allows."""
+        if self.manifest["capture"].get("stop_reason") == "revision_drift":
+            raise SelectionError("capture generation is invalidated; start a fresh capture")
         try:
             # Live revision check first: it decides whether any recorded code
             # evidence may be reused at all, and it must happen before the
@@ -1357,6 +1362,10 @@ class Capture:
                         except _Blocked:
                             pass
                         self._checkpoint()
+            # Spend the held-back capacity only after acquisition: sources may
+            # not be certified against a revision that moved during the run.
+            for member in self.selection.members:
+                self.live.verify_pr(member, reserve=0)
         except ghread.BudgetExhausted as exc:
             self.log(str(exc))
             self.stop_reason = self.stop_reason or "request_budget"
@@ -1364,6 +1373,7 @@ class Capture:
             self.log(f"acquisition stopped: {exc}")
             self.stop_reason = self.stop_reason or "transport_error"
         except SelectionError:
+            self.stop_reason = "revision_drift"
             raise
         finally:
             self._checkpoint()
