@@ -2,13 +2,20 @@
 
 <img src="docs/assets/tranche-mascot.png" alt="Tranche, a watchful geometric owl holding a bundle of three pull-request cards" width="200">
 
-**Tranche, the backlog keeper.** Spots duplicates and gathers fixes into reviewable
+**Tranche, the backlog keeper.** A configurable PR triage tool for public GitHub
+repositories. It spots likely duplicates and gathers changes into reviewable
 batches. Jev supplies the judgments; humans make the merge call.
+
+Each deployment has a `tranche.json` contract that selects the repository, model
+alias, question wording, category taxonomy and display labels. The same binary
+runs each deployment. Omarchy is the included demo use case, with a captured
+corpus and published report; its review policy is an example, not a requirement
+for using Tranche.
 
 MIT licensed (see [LICENSE](LICENSE)); Tranche reads public repositories only and
 never includes credentials in its reports.
 
-**Live report:** <https://vdistefano.studio/Tranche/>
+**Omarchy demo report:** <https://vdistefano.studio/Tranche/>
 
 ## Screenshots
 
@@ -20,21 +27,55 @@ The native CLI: pipeline commands, evidence tools and the complementary MCP serv
 
 ![Tranche CLI help in a real terminal](docs/assets/tranche-cli.png)
 
-Tranche exists because the Omarchy PR backlog hit 2,800 open PRs growing by
-~100 a day. DHH stood up a human triage team on 2026-09-12
-([x.com/dhh/status/2098755120540393908](https://x.com/dhh/status/2098755120540393908))
-and asked for exactly three things: roll fixes into clusters that can be
-trusted, consolidate duplicates, and make sure everything reaches him in a
-finished form. Tranche is the tool side of that job. It uses
-[TypeSafe](https://docs.typesafe.ai)'s System One model **Jev** to judge PR
-descriptions, and it is built for the team DHH described — including his
-boundary from the follow-up reply: *"I'm not delegating the user experience."*
-Taste-level PRs get their own `user-experience` lane that the pipeline prepares
-but never pre-judges.
+## Why Omarchy is the demo
+
+Tranche grew out of the Omarchy PR backlog. DHH's
+[call for a human triage team](https://x.com/dhh/status/2098755120540393908)
+described concrete work: consolidate duplicates, prepare fixes for review, and
+bring changes forward in finished form. That is a useful test of a triage tool:
+the output has to help maintainers decide what to read next and what needs more
+work, rather than merely assign labels.
+
+Omarchy exercises several problems other repositories also face:
+
+- A large backlog makes repeated manual sorting expensive. Incremental captures
+  and bound judgments let Tranche reuse work when the evidence and policy have
+  not changed.
+- Contributors can propose competing fixes for the same problem. Candidate
+  pairs and duplicate groups give reviewers a starting point for comparing the
+  implementations; similar wording alone never proves equivalence.
+- Changes span installation, desktop configuration, shell tools, applications
+  and hardware support. A repository-specific taxonomy is more useful here than
+  one universal set of labels. Omarchy's categories live in its deployment
+  contract, and another repository can supply its own.
+- A documentation edit and a change to permissions or boot behavior need
+  different review effort. Risk hints and the security queue help route that
+  attention, but do not establish that a patch is safe.
+- Product taste belongs to maintainers. Omarchy's contract has a
+  `user-experience` category so those proposals remain visible as a distinct
+  area; categorization does not authorize a model to decide the project's
+  defaults or design direction.
+- The demo is inspectable. The published workbench exposes the review queues,
+  and a committed slice of the captured corpus lets regression tests rebuild
+  reports without buying a model pass. Offline CLI and MCP commands read those
+  same bound reports. The full capture is local data, not bundled with the
+  binary or guaranteed to be present in a fresh clone.
+
+The demo shows the whole path from captured PRs to a human review queue. It also
+makes the limits visible: Tranche judges descriptions and diff statistics,
+not patch correctness. Reviewers still need to read the diffs, check CI and test
+the proposed result.
+
+The included `tranche.json`, report data and screenshots describe Omarchy. For
+another public GitHub repository, create a separate deployment root with
+`tranche init OWNER/REPO` and edit its starter policy before making model calls.
+Tranche currently uses [TypeSafe](https://docs.typesafe.ai)'s System One model
+**Jev**; configurable repository policy does not imply interchangeable model
+providers or support for other forges.
 
 ## What Tranche does
 
-- **Fetches** the open PRs of `omacom/omarchy` into a local snapshot, through
+- **Fetches** the configured repository's open PRs into a local snapshot, through
   `gh`, so the credential never touches a command line.
 - **Judges** each PR with one batched Jev call: what area it touches, how risky
   it is, whether it is a fix, how finished it looks, how much review effort it
@@ -74,6 +115,12 @@ flags that exist.
 
 ## Quick start
 
+### Run the Omarchy demo
+
+The commands below use this checkout's Omarchy contract. `fetch` captures current
+membership; `judge` and `dupes` can incur API charges. Browsing the published
+[demo report](https://vdistefano.studio/Tranche/) requires no setup.
+
 ```bash
 # Give the model stages a key. Either source works; the env var wins.
 echo "apikey_..." > ~/Documents/jevapi.txt
@@ -94,6 +141,47 @@ without spending a model call.
 
 Every stage is safe to re-run. `cluster` and `batches` are pure functions of the
 stored corpus — they call no model and touch no network.
+
+### Use another repository
+
+Keep its data separate from the Omarchy demo. From the Tranche source checkout:
+
+```bash
+mkdir ../my-triage
+tranche --root ../my-triage init OWNER/REPO
+# Edit ../my-triage/tranche.json before the first model pass.
+tranche --root ../my-triage fetch
+tranche --root ../my-triage judge --resume
+tranche --root ../my-triage dupes
+tranche --root ../my-triage cluster
+tranche --root ../my-triage batches
+```
+
+Replace `OWNER/REPO` with the public GitHub repository you want to review. The
+starter uses generic categories such as `fix`, `feature`, `docs` and `chore`.
+Adjust their criteria and question wording to the repository's review standards;
+keep the engine's question names, answer types and score ranges. This is a
+configurable triage workflow, not an arbitrary questionnaire engine.
+
+`init` refuses an existing contract unless you pass `--force`. Changing the
+repository, model alias or question wording changes cache bindings. Edit before
+judging whenever possible; later changes can require another paid model pass.
+Display labels and titles do not enter model-call cache keys.
+
+Page rendering currently requires deployment-local resources beyond the
+contract. Copy the template and browser assets from this checkout before
+rendering:
+
+```bash
+mkdir -p ../my-triage/page ../my-triage/docs/assets
+cp page/template.html ../my-triage/page/
+cp -R docs/assets/. ../my-triage/docs/assets/
+tranche --root ../my-triage page
+```
+
+The assets include Tranche branding and demo screenshots; they are not the
+repository's review policy. `init` currently writes only `tranche.json`, so a
+new deployment cannot render a page from the installed binary alone.
 
 ## Checking a report before you trust it
 
@@ -133,6 +221,10 @@ which situation you are in before you commit to it.
 
 ## What Jev is asked (one batched call per PR)
 
+The engine reads the seven answer shapes below. Question wording and category
+choices come from each deployment's contract; the category list shown here is
+Omarchy's demo taxonomy, not the generic starter's.
+
 | Question | Type | Meaning |
 |---|---|---|
 | `category` | Choice | install-setup / desktop-config / user-experience / shell-cli / apps-integrations / hardware-drivers / update-release / agents-ai / docs / fix-misc / unclear |
@@ -167,7 +259,9 @@ enter review candidates or batches.
 
 ## Outputs
 
-Everything lands in `out/`, and all of it is tracked in this repository:
+Report artifacts land in `out/` under the deployment root; the workbench lands
+in `docs/`. This repository tracks the Omarchy demo's report artifacts. Other
+deployments decide how to store and publish their own data.
 
 | File | What it is |
 |---|---|
