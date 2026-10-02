@@ -142,7 +142,10 @@ impl Root {
     /// set that the pipeline never reads.
     pub fn source_paths(&self) -> Vec<PathBuf> {
         let snapshot = self.snapshot_path();
-        let mut paths = vec![snapshot.clone()];
+        let mut paths = vec![
+            self.path.join(crate::policy::Contract::FILE_NAME),
+            snapshot.clone(),
+        ];
         if !snapshot.exists() {
             paths.extend(read_page_paths(&self.pages_dir()));
         }

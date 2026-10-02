@@ -14,6 +14,17 @@ use tranche_core::policy::Contract;
 use tranche_core::report::{BoundReport, Limits, Root, input_digests, load};
 use tranche_core::util::{atomic_json, digest};
 
+#[test]
+fn deployment_contract_is_fingerprinted_with_report_inputs() {
+    let root = Root::new(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixture"));
+    let digests = input_digests(&root, &Limits::default()).unwrap();
+    assert!(
+        digests
+            .get(root.path().join(Contract::FILE_NAME).to_str().unwrap())
+            .is_some()
+    );
+}
+
 fn contract() -> Contract {
     Contract::load(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -39,11 +50,18 @@ fn copy_of_corpus() -> (tempfile::TempDir, Root) {
     let source = corpus();
     let temp = tempfile::tempdir().expect("a temporary root");
     let dest = Root::new(temp.path());
+    std::fs::copy(
+        source.path().join(Contract::FILE_NAME),
+        dest.path().join(Contract::FILE_NAME),
+    )
+    .expect("the deployment contract");
     for path in source.source_paths() {
         let Some(name) = path.file_name() else {
             continue;
         };
-        let target = if name == "snapshot.json" {
+        let target = if name == Contract::FILE_NAME {
+            dest.path().join(Contract::FILE_NAME)
+        } else if name == "snapshot.json" {
             dest.snapshot_path()
         } else if let Some(stem) = name.to_str().filter(|n| n.starts_with("page_")) {
             dest.pages_dir().join(stem)
@@ -217,9 +235,9 @@ fn input_digests_fingerprint_every_bound_input() {
     let root = corpus();
     let digests = input_digests(&root, &Limits::default()).expect("digests");
     let map = digests.as_object().expect("a map");
-    // The snapshot, the two logs and the five report outputs. The page shards
+    // The contract, snapshot, two logs and five report outputs. The page shards
     // exist but are not fingerprinted while a snapshot is present.
-    assert_eq!(map.len(), 8, "{:?}", map.keys().collect::<Vec<_>>());
+    assert_eq!(map.len(), 9, "{:?}", map.keys().collect::<Vec<_>>());
     assert!(map.contains_key("/srv/lab/hack/omarchy-pr-jev-triage/data/pages/snapshot.json"));
     assert!(map.contains_key("/srv/lab/hack/omarchy-pr-jev-triage/out/summary.json"));
     assert!(map.values().all(|value| value.is_string()));
@@ -234,11 +252,11 @@ fn input_digests_fingerprint_every_bound_input() {
 
 #[test]
 #[ignore = "reads the local 111 MiB corpus; the committed fixture covers the rest"]
-fn a_root_without_the_service_modules_is_refused() {
+fn a_root_without_the_deployment_contract_is_refused() {
     let temp = tempfile::tempdir().expect("a temporary root");
     let root = Root::new(temp.path());
     let error = load(&root, &Limits::default()).expect_err("an empty root is refused");
-    assert!(error.0.contains("Invalid or missing"), "{error}");
+    assert!(error.0.contains("no usable deployment contract"), "{error}");
     // Nothing leaks as a usable observation.
     let refused: Result<BoundReport, _> = load(&root, &Limits::default());
     assert!(refused.is_err());
