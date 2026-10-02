@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use tranche_core::domain::cluster::{escalated, review_candidate, security_priority};
 use tranche_core::domain::judge::Judgment;
 use tranche_core::domain::pr::Prs;

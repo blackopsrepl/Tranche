@@ -12,8 +12,4 @@ pub mod server;
 pub mod tools;
 
 pub use error::{QueryArguments, ReportError};
-
-/// Serve requests until stdin closes.
-pub fn serve(root: &tranche_core::report::Root) -> Result<(), String> {
-    server::serve(root)
-}
+pub use server::serve;

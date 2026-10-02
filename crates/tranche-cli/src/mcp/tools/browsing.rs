@@ -3,11 +3,8 @@
 use std::collections::HashMap;
 
 use serde_json::{Map, Value, json};
-use tranche_core::domain::cluster::{escalated, review_candidate, security_priority};
-use tranche_core::domain::judge::Judgment;
-use tranche_core::report::REPOSITORY;
 
-use super::super::error::{QueryArguments, ReportError};
+use super::super::error::ReportError;
 use super::View;
 
 impl View {

@@ -1,11 +1,6 @@
 //! `query`: security-first PR search with exact filters and pagination.
 
-use std::collections::HashMap;
-
-use serde_json::{Map, Value, json};
-use tranche_core::domain::cluster::{escalated, review_candidate, security_priority};
-use tranche_core::domain::judge::Judgment;
-use tranche_core::report::REPOSITORY;
+use serde_json::{Value, json};
 
 use super::super::error::{QueryArguments, ReportError};
 use super::View;
