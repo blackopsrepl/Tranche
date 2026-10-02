@@ -30,7 +30,7 @@ PAIRED := $(shell test -f out/pair_verdicts.jsonl && wc -l < out/pair_verdicts.j
 TRANCHE ?= tranche
 
 # ============== Phony Targets ==============
-.PHONY: banner help fetch refresh judge judge-full dupes cluster batches page all evidence evidence-show publish verify info clean-judgments test check cli-install release-check release-dry-run release
+.PHONY: banner help fetch refresh judge judge-full dupes cluster batches qualify requirements assign page all evidence evidence-show publish verify info clean-judgments test check cli-install release-check release-dry-run release
 
 # ============== Default Target ==============
 .DEFAULT_GOAL := help
@@ -83,6 +83,19 @@ cluster: banner
 batches: banner
 	@printf "$(ARROW) $(BOLD)Classifying review candidates into cumulative batches...$(RESET)\n"
 	@$(TRANCHE) batches
+
+# Issue #5: skill-based PR assignment.
+qualify: banner
+	@printf "$(ARROW) $(BOLD)Qualifying synthetic resumes (explicit model calls)...$(RESET)\n"
+	@$(TRANCHE) qualify $(PREPROCESS_ARGS)
+
+requirements: banner
+	@printf "$(ARROW) $(BOLD)Classifying required skills (explicit model calls)...$(RESET)\n"
+	@$(TRANCHE) requirements $(PREPROCESS_ARGS)
+
+assign: banner
+	@printf "$(ARROW) $(BOLD)Proposing synthetic owners offline via SolverForge...$(RESET)\n"
+	@$(TRANCHE) assign
 
 # ============== Output ==============
 
@@ -185,6 +198,10 @@ help: banner
 	@/bin/echo -e "  $(GREEN)make dupes$(RESET)         - Compare candidate pairs with Jev"
 	@/bin/echo -e "  $(GREEN)make cluster$(RESET)       - Build tranches, dupe groups, escalation lists"
 	@/bin/echo -e "  $(GREEN)make batches$(RESET)       - Build cumulative pre-release batches and the park record"
+	@/bin/echo -e "  $(GREEN)make qualify$(RESET)       - Explicit resume preprocessing (potentially paid)"
+	@/bin/echo -e "  $(GREEN)make requirements$(RESET)  - Explicit PR skill preprocessing (potentially paid)"
+	@/bin/echo -e "  $(GRAY)PREPROCESS_ARGS='--dry-run --limit 1' previews without calls or writes$(RESET)"
+	@/bin/echo -e "  $(GREEN)make assign$(RESET)        - Offline synthetic owner proposals; no model calls"
 	@/bin/echo -e "  $(GREEN)make refresh$(RESET)       - $(BOLD)Deterministic incremental refresh of everything$(RESET)"
 	@/bin/echo -e "  $(GRAY)Every stage runs the native frontend: tranche fetch|judge|dupes|cluster|batches|refresh|page$(RESET)"
 	@/bin/echo -e ""
