@@ -1,6 +1,7 @@
 //! Builds on Christopher’s initial CLI POC (@GreyforgeLabs), with the Rust
 //! frontend and native integration developed and maintained in Tranche.
 
+pub mod assignment;
 pub mod cli;
 pub mod commands;
 pub mod dupes;

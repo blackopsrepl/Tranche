@@ -20,7 +20,9 @@ use crate::report_files::read_json;
 use crate::reports::{batches as build_batches, cluster_report};
 
 /// The steps, in the order they always run.
-const STEPS: [&str; 6] = ["fetch", "judge", "dupes", "cluster", "batches", "page"];
+const STEPS: [&str; 7] = [
+    "fetch", "judge", "dupes", "cluster", "batches", "assign", "page",
+];
 
 /// The counts a refresh reports before and after, with the change marked.
 const ACCOUNTED: [&str; 8] = [
@@ -42,10 +44,14 @@ pub fn refresh(
     dry_run: bool,
     report: &mut dyn FnMut(&str),
 ) -> Outcome {
+    let has_team = match tranche_core::domain::assignment::team::resume_paths(root) {
+        Ok(paths) => !paths.is_empty() || root.assignments_path().exists(),
+        Err(e) => return Outcome::refusal(e, 1),
+    };
     let steps: Vec<&str> = STEPS
         .iter()
         .copied()
-        .filter(|step| !(*step == "page" && no_page))
+        .filter(|step| !(*step == "page" && no_page) && (*step != "assign" || has_team))
         .collect();
 
     if dry_run {
@@ -66,6 +72,11 @@ pub fn refresh(
             "dupes" => crate::dupes::dupes(root, max_pairs, &mut say).map(|_| ()),
             "cluster" => outcome_of(cluster_report(root, false, false)),
             "batches" => outcome_of(build_batches(root, false)),
+            "assign" => match tranche_core::domain::assignment::team::resume_paths(root) {
+                Ok(paths) if paths.is_empty() && !root.assignments_path().exists() => Ok(()),
+                Ok(_) => outcome_of(crate::assignment::assign::assign(root, false)),
+                Err(e) => Err(e),
+            },
             "page" => outcome_of(crate::workbench::page(root, false, false, &mut say)),
             other => Err(format!("unknown step {other}")),
         };

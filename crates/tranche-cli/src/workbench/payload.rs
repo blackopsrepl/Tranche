@@ -21,6 +21,7 @@ pub(super) fn payload(
     dupes: &Value,
     batches: Option<&Value>,
     parked: Option<&Value>,
+    assignments: Option<&Value>,
     root: &Root,
 ) -> Value {
     let grouped = grouped(dupes);
@@ -96,6 +97,7 @@ pub(super) fn payload(
         "batches": shipped,
         "batches_available": batches.is_some(),
         "parked": parked.cloned().unwrap_or(Value::Null),
+        "assignments": assignments.cloned().unwrap_or(Value::Null),
     })
 }
 

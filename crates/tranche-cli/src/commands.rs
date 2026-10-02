@@ -46,6 +46,9 @@ pub fn run(cli: &Cli) -> Outcome {
         Command::Evidence { command } => evidence(&root, command, cli.json),
         Command::Cluster(args) => cluster_report(&root, args.allow_unbound, cli.json),
         Command::Batches => build_batches(&root, cli.json),
+        Command::Qualify(args) => run_preprocess(&root, args, false),
+        Command::Requirements(args) => run_preprocess(&root, args, true),
+        Command::Assign => crate::assignment::assign::assign(&root, cli.json),
         Command::Info => print_info(&root, cli.json),
         Command::Fetch(args) => run_fetch(&root, args.transport),
         Command::Judge(args) => run_judge(&root, args.resume, args.limit),
@@ -98,6 +101,25 @@ fn run_all(root: &Root, limit: Option<u64>, max_pairs: u64) -> Outcome {
         }
     }
     Outcome::success(String::new())
+}
+
+/// Judge team resumes against the skill taxonomy.
+fn run_preprocess(root: &Root, args: &crate::cli::Preprocess, requirements: bool) -> Outcome {
+    match crate::assignment::qualify::preprocess_options(
+        root,
+        requirements,
+        args.limit,
+        args.dry_run,
+        args.force,
+        &mut |line| println!("{line}"),
+    ) {
+        Ok((written, 0)) => Outcome::success(format!("{written} preprocessing records appended\n")),
+        Ok((_, errors)) => Outcome::refusal(
+            format!("{errors} preprocessing requests failed; rerun to continue"),
+            1,
+        ),
+        Err(e) => Outcome::refusal(e, 1),
+    }
 }
 
 /// Compare the outstanding candidate pairs.

@@ -42,6 +42,12 @@ pub enum Command {
     Cluster(Cluster),
     /// Build cumulative pre-release batches and the park record.
     Batches,
+    /// Judge team resumes against the skill taxonomy.
+    Qualify(Preprocess),
+    /// Independently judge required skills without rejudging the original seven.
+    Requirements(Preprocess),
+    /// Assign PRs to team members via SolverForge.
+    Assign,
     /// Print the numbers from the current report.
     Info,
     /// Run fetch, judge, dupes, cluster, batches and page in order.
@@ -87,6 +93,19 @@ pub struct Fetch {
     /// How to reach GitHub.
     #[arg(long, value_enum, default_value_t = Transport::Gh)]
     pub transport: Transport,
+}
+
+#[derive(Debug, Args)]
+pub struct Preprocess {
+    /// Maximum sources to ask this pass; cache reuse is always enabled.
+    #[arg(long, value_name = "N", value_parser = positive)]
+    pub limit: Option<u64>,
+    /// Show pending call count without reading credentials, calling or writing.
+    #[arg(long)]
+    pub dry_run: bool,
+    /// Re-evaluate current evidence, including previous unknown answers.
+    #[arg(long)]
+    pub force: bool,
 }
 
 #[derive(Debug, Args)]

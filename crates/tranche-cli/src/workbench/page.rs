@@ -115,12 +115,21 @@ pub fn page(
         );
     }
 
+    let assignments = if root.assignments_path().exists() {
+        match tranche_core::report::load(root, &Default::default()) {
+            Ok(loaded) => loaded.assignments,
+            Err(e) => return Outcome::refusal(format!("assignments: {e}"), 1),
+        }
+    } else {
+        None
+    };
     let built = super::payload::payload(
         &corpus,
         &judgments,
         &dupes,
         batches.as_ref(),
         parked.as_ref(),
+        assignments.as_ref(),
         root,
     );
     let (html, json_bytes) = match super::writing::write(root, &built) {
