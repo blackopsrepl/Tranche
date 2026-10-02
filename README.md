@@ -312,6 +312,24 @@ make check         # tests + lint + optional real-browser workbench probe
 make mcp-check MCP_PYTHON=/path/to/venv-python   # opt-in real-client MCP integration
 ```
 
+The [native evidence CLI](docs/EVIDENCE_PACKET.md) for issue #9 lets a user select
+a batch, capture its public source material, inspect citations, resume a partial
+capture and export a packet — all inside Tranche. The capture implementation,
+native state and packet format are maintained in this repository and shipped as
+Tranche, with the CLI, workbench and MCP reading the same evidence; users never
+need another application, and external tools may consume exports.
+
+```bash
+python3 tranche.py evidence capture --batch B001 --request-budget 100
+python3 tranche.py evidence show    --batch B001
+python3 tranche.py evidence export  --batch B001 --output review-packet.json
+```
+
+Evidence is optional, read-only toward GitHub and model-free. Design:
+[docs/decisions/native-evidence-cli.md](docs/decisions/native-evidence-cli.md);
+implemented behaviour: [docs/EVIDENCE_CLI.md](docs/EVIDENCE_CLI.md). Publication
+to the workbench and MCP retrieval are follow-up work on the same service.
+
 ## Versioned releases
 
 One coherent iteration produces one release tag. `VERSION` and

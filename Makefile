@@ -35,7 +35,7 @@ JUDGED := $(shell test -f out/judgments.jsonl && wc -l < out/judgments.jsonl || 
 PAIRED := $(shell test -f out/pair_verdicts.jsonl && wc -l < out/pair_verdicts.jsonl || echo 0)
 
 # ============== Phony Targets ==============
-.PHONY: banner help fetch refresh judge judge-full dupes cluster page gif all publish verify info clean-judgments test check mcp-check print-interpreter release-check release-dry-run release
+.PHONY: banner help fetch refresh judge judge-full dupes cluster page gif all evidence evidence-show publish verify info clean-judgments test check mcp-check print-interpreter release-check release-dry-run release
 
 # ============== Default Target ==============
 .DEFAULT_GOAL := help
@@ -106,6 +106,17 @@ refresh: banner
 	@printf "$(CYAN)$(BOLD)╚══════════════════════════════════════╝$(RESET)\n\n"
 	@$(PYTHON) tranche.py refresh --max-pairs $(if $(MAX_PAIRS),$(MAX_PAIRS),400)
 
+# Issue #9: capture the public evidence of one native batch, locally and ignored.
+evidence: banner
+	@printf "$(CYAN)$(BOLD)╔══════════════════════════════════════╗$(RESET)\n"
+	@printf "$(CYAN)$(BOLD)║     Evidence capture (batch)          ║$(RESET)\n"
+	@printf "$(CYAN)$(BOLD)╚══════════════════════════════════════╝$(RESET)\n\n"
+	@test -n "$(BATCH)" || (printf "$(RED)Usage: make evidence BATCH=B001 [BUDGET=200]$(RESET)\n" && exit 2)
+	@$(PYTHON) tranche.py evidence capture --batch $(BATCH) --request-budget $(if $(BUDGET),$(BUDGET),200)
+
+evidence-show: banner
+	@$(PYTHON) tranche.py evidence show --batch $(BATCH)
+
 all:
 	@$(MAKE) fetch
 	@$(MAKE) judge
@@ -155,7 +166,7 @@ test:
 check: test
 	@if command -v node >/dev/null 2>&1; then node --test tests/workbench.test.cjs; else printf 'Node unavailable; optional frontend tests skipped.\n'; fi
 	@ruff check .
-	@$(PYTHON) -m compileall -q tranche.py gen_page.py hostpython.py mcp_server.py tests tools
+	@$(PYTHON) -m compileall -q tranche.py gen_page.py hostpython.py mcp_server.py report_loader.py ghread.py evidence.py tests tools
 	@git diff --check
 
 # Real-client subprocess check against the current local corpus, separate from
@@ -197,6 +208,10 @@ help: banner
 	@/bin/echo -e "  $(GREEN)make all$(RESET)           - $(YELLOW)$(BOLD)fetch → judge → dupes → cluster → page$(RESET)"
 	@/bin/echo -e "  $(GREEN)make publish$(RESET)       - Commit docs/ + push (Pages rebuilds)"
 	@/bin/echo -e "  $(GREEN)make verify$(RESET)        - Prove the live page serves"
+	@/bin/echo -e ""
+	@/bin/echo -e "$(CYAN)$(BOLD)Evidence (issue #9):$(RESET)"
+	@/bin/echo -e "  $(GREEN)make evidence BATCH=B001$(RESET) - Capture one batch's public evidence (read-only)"
+	@/bin/echo -e "  $(GREEN)make evidence-show BATCH=B001$(RESET) - Inspect the current batch's coverage"
 	@/bin/echo -e ""
 	@/bin/echo -e "$(CYAN)$(BOLD)Release:$(RESET)"
 	@/bin/echo -e "  $(GREEN)make check$(RESET)         - Offline tests, Ruff, syntax and whitespace"

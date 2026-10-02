@@ -2,6 +2,25 @@ data/pages/
 *.log
 __pycache__/
 
-# Vendored agent-harness skill trees; Tranche does not read them.
+# Agent-harness scratch. Tranche does not read, ship or depend on any of these,
+# so a checkout never carries a harness's own config, sessions or vendored skill
+# trees. AGENTS.md is deliberately NOT ignored: repository instructions, when a
+# contributor adds them, are tracked like any other file.
 .claude/
+.codex/
+.cursor/
+.cursorignore
+.aider*
+.opencode/
+.gemini/
+.specstory/
+.copilot/
+.mcp.json
+CLAUDE.md
 skills-lock.json
+.work/
+
+# Native evidence runtime state (issue #9). Captured public evidence is local
+# runtime data; fixtures and deliberately published output are a different
+# category and are tracked on purpose.
+out/evidence/

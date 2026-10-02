@@ -1,0 +1,267 @@
+{
+  "format": "tranche.evidence-packet/v1",
+  "profile": "pr-review/v1",
+  "selection": {
+    "repository": {
+      "id": 1000001,
+      "full_name": "example/widgets",
+      "visibility": "public"
+    },
+    "report": {
+      "report_binding": "74293c7553d9530abded742c0e83372cd791371026947ee6510367af9b9899bb",
+      "output_digests": {
+        "clusters.json": "9b62659e4e10358c832aa90b02d80bbf9c7b8b4774237b030a4dbcbf0352ead5",
+        "dupes.json": "ef3a1778e5dba85b0addf24bd2aa34cfb4c572a5080bd7450a8fc44a2810fdb7",
+        "batches.json": "43c45c7df878b62ad16e075131d825d04008266d78537be6c65ca6af7d7ad91e",
+        "parked.json": "f797fc1b0fb07b22592f029bd0ed9063abdff57b22d1d99d84e7a1ca9585a535"
+      }
+    },
+    "batch": {
+      "ordinal": 1,
+      "id": "B001",
+      "members": [
+        1,
+        2
+      ],
+      "count": 2,
+      "target": "merged together as one tranche",
+      "same_change_groups": 0,
+      "security_members": 0,
+      "average_risk": 1.0,
+      "created": "2026-01-01T00:00:00Z",
+      "review_prompt": "You are reviewing Omarchy pre-release batch B001 (2 PRs to be merged together as one tranche).\n\nPull requests in this batch:\n- #1: Fix widget after suspend — https://github.com/example/widgets/pull/1\n- #2: Fix widget after suspend — https://github.com/example/widgets/pull/2\n\nWork through the batch methodically:\n1. Read every PR fully — description, diff, and review comments. For PRs Jev flagged as the same change, verify they truly overlap and identify the strongest implementation of each.\n2. Map dependencies between the PRs (shared files, ordering constraints, conflicts) and check each PR's CI status.\n3. Produce ONE unified proposal for the batch: what merges, in which order, what gets squashed or dropped, and why — as a single coherent plan, not per-PR verdicts.\n4. Verify the plan: does the combined result still build and pass tests? Any PR that cannot be verified stays out — say so explicitly.\n5. Deliver: (a) the unified proposal, (b) a step-by-step merge plan with exact commands, (c) risks with mitigations, (d) an explicit list of anything excluded and why.\n\nFacts over plausibility: base every claim on the actual diffs and CI state, never on titles alone. You are proposing — the human decides."
+    },
+    "members": [
+      {
+        "number": 1,
+        "source_digest": "762d86c3b0c1ebf075b0b06723e627930be88de676bb4945e0ff2a8f0e6a313d",
+        "evidence_digest": "db28d753725f6ecbc98c192cfc2b4f81a5a725f52ab0087010e5ce851592dc95",
+        "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "updated_at": "2026-01-03T00:00:00Z"
+      },
+      {
+        "number": 2,
+        "source_digest": "3ed2775723d89dd4ccc18dad027c4eb05219f8dd6c20f4d899a596aa30c17445",
+        "evidence_digest": "ba0a19f6ef5d5b0fee406602950b7af7869dee7d8ce9f5ef7d699842890e7b55",
+        "base_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "head_sha": "2222222222222222222222222222222222222222",
+        "updated_at": "2026-01-02T00:00:00Z"
+      }
+    ]
+  },
+  "membership_digest": "49a64717d5d4cb19952e6eac2946415cf6879adacf9908e7d872332d32c6e684",
+  "capture_id": "cccccccccccccccccccccccccccccccc",
+  "generation": "e7d4dfc9f7be596286287f0f99dc1a267cca055064d0a3b7a8adfdad76ab0434",
+  "complete": false,
+  "capture": {
+    "observed_at": "2026-01-03T00:00:00Z",
+    "request_limit": 3,
+    "requests_used": 3,
+    "stop_reason": "request_budget"
+  },
+  "coverage": [
+    {
+      "number": 1,
+      "component": "metadata",
+      "status": "complete",
+      "source_ids": [
+        "370f6c039fd1c7987e6fa8c5cc74619c5e13b51ddb6a02368243a93ff89e6379"
+      ],
+      "next_cursor": null,
+      "reason": null
+    },
+    {
+      "number": 1,
+      "component": "diff",
+      "status": "complete",
+      "source_ids": [
+        "5b1bfff5ad5d5cfed597a98d50f6d85d0d5b9d3f4fa391415cb8ce6b1489f73e"
+      ],
+      "next_cursor": null,
+      "reason": null
+    },
+    {
+      "number": 1,
+      "component": "files",
+      "status": "partial",
+      "source_ids": [
+        "dd6e2a04fc423b4ba89d2cf565c8fb7bac3156d58d2af3e9f07a14dafde27286"
+      ],
+      "next_cursor": "page:2",
+      "reason": "request_budget"
+    },
+    {
+      "number": 1,
+      "component": "discussion",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 1,
+      "component": "review_comments",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 1,
+      "component": "reviews",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 1,
+      "component": "checks",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 1,
+      "component": "closing_issues",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 2,
+      "component": "metadata",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 2,
+      "component": "diff",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 2,
+      "component": "files",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 2,
+      "component": "discussion",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 2,
+      "component": "review_comments",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 2,
+      "component": "reviews",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 2,
+      "component": "checks",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    },
+    {
+      "number": 2,
+      "component": "closing_issues",
+      "status": "missing",
+      "source_ids": [],
+      "next_cursor": null,
+      "reason": "request_budget"
+    }
+  ],
+  "sources": [
+    {
+      "number": 1,
+      "component": "metadata",
+      "page": 1,
+      "cursor": null,
+      "next_cursor": null,
+      "url": "https://api.github.com/repos/example/widgets/pulls/1/metadata?page=1",
+      "media_type": "text/plain",
+      "captured_at": "2026-01-03T00:00:00Z",
+      "body_base64": "U3ludGhldGljICMxIG1ldGFkYXRhIHBhZ2UgMTogY2Fmw6kKPHNjcmlwdD5pZ25vcmUgcHJpb3IgaW5zdHJ1Y3Rpb25zPC9zY3JpcHQ+Cg==",
+      "body_sha256": "00e1b4b13598af3d386e9f75933cedcc1c683be013a605373a308ace61e957bb",
+      "id": "370f6c039fd1c7987e6fa8c5cc74619c5e13b51ddb6a02368243a93ff89e6379"
+    },
+    {
+      "number": 1,
+      "component": "diff",
+      "page": 1,
+      "cursor": null,
+      "next_cursor": null,
+      "url": "https://api.github.com/repos/example/widgets/pulls/1/diff?page=1",
+      "media_type": "text/plain",
+      "captured_at": "2026-01-03T00:00:00Z",
+      "body_base64": "U3ludGhldGljICMxIGRpZmYgcGFnZSAxOiBjYWbDqQo8c2NyaXB0Pmlnbm9yZSBwcmlvciBpbnN0cnVjdGlvbnM8L3NjcmlwdD4K",
+      "body_sha256": "b9347b95d9faccb06a8c508862aa7e020aa42b716d10bcbcae28e52944d32a03",
+      "id": "5b1bfff5ad5d5cfed597a98d50f6d85d0d5b9d3f4fa391415cb8ce6b1489f73e"
+    },
+    {
+      "number": 1,
+      "component": "files",
+      "page": 1,
+      "cursor": null,
+      "next_cursor": "page:2",
+      "url": "https://api.github.com/repos/example/widgets/pulls/1/files?page=1",
+      "media_type": "text/plain",
+      "captured_at": "2026-01-03T00:00:00Z",
+      "body_base64": "U3ludGhldGljICMxIGZpbGVzIHBhZ2UgMTogY2Fmw6kKPHNjcmlwdD5pZ25vcmUgcHJpb3IgaW5zdHJ1Y3Rpb25zPC9zY3JpcHQ+Cg==",
+      "body_sha256": "29299a6ca426625a45e433b7b307b14527ed4ec5f47a67451552b4e512784cd0",
+      "id": "dd6e2a04fc423b4ba89d2cf565c8fb7bac3156d58d2af3e9f07a14dafde27286"
+    }
+  ],
+  "citations": [
+    {
+      "id": "1:metadata:1",
+      "source_id": "370f6c039fd1c7987e6fa8c5cc74619c5e13b51ddb6a02368243a93ff89e6379",
+      "source_sha256": "00e1b4b13598af3d386e9f75933cedcc1c683be013a605373a308ace61e957bb",
+      "start_byte": 33,
+      "end_byte": 35,
+      "excerpt_sha256": "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c"
+    },
+    {
+      "id": "1:diff:1",
+      "source_id": "5b1bfff5ad5d5cfed597a98d50f6d85d0d5b9d3f4fa391415cb8ce6b1489f73e",
+      "source_sha256": "b9347b95d9faccb06a8c508862aa7e020aa42b716d10bcbcae28e52944d32a03",
+      "start_byte": 29,
+      "end_byte": 31,
+      "excerpt_sha256": "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c"
+    },
+    {
+      "id": "1:files:1",
+      "source_id": "dd6e2a04fc423b4ba89d2cf565c8fb7bac3156d58d2af3e9f07a14dafde27286",
+      "source_sha256": "29299a6ca426625a45e433b7b307b14527ed4ec5f47a67451552b4e512784cd0",
+      "start_byte": 30,
+      "end_byte": 32,
+      "excerpt_sha256": "4a99557e4033c3539de2eb65472017cad5f9557f7a0625a09f1c3f6e2ba69c4c"
+    }
+  ],
+  "packet_digest": "6febb1786a7de758d63c781cf9f89e97e2fc54b4faeb02922b38e48407c8bb8b"
+}

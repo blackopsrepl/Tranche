@@ -1605,6 +1605,13 @@ def render_page() -> None:
 
 
 def main() -> None:
+    # Imported here, not at module scope: `evidence` imports tranche, and the
+    # pipeline must stay importable without pulling the evidence service in.
+    # Under __main__ the same module object is `__main__`, so importing `tranche`
+    # here would create a second copy of this module's state; importing from
+    # `tranche` when it is already `__main__` avoids that by construction.
+    import evidence
+
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     fetch = sub.add_parser("fetch", help="refresh observed open-PR membership from GitHub")
@@ -1627,11 +1634,15 @@ def main() -> None:
     a.add_argument("--limit", type=int, default=None)
     a.add_argument("--resume", action="store_true", help="accepted for compatibility; all always resumes")
     a.add_argument("--max-pairs", type=int, default=300)
+    evidence.add_parser(sub)
     args = ap.parse_args()
     if getattr(args, "limit", None) is not None and args.limit <= 0:
         ap.error("--limit must be positive")
     if getattr(args, "max_pairs", 0) < 0:
         ap.error("--max-pairs must be nonnegative")
+    if args.cmd == "evidence":
+        # Evidence is a separate, read-only service; its exit codes are its own.
+        raise SystemExit(evidence.dispatch(args))
     if args.cmd == "fetch":
         cmd_fetch(args)
     elif args.cmd == "judge":

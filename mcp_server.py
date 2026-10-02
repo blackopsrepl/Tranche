@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Read-only, model-free access to Tranche's bound local observation."""
 import argparse
-import hashlib
 import json
 import math
 import re
@@ -9,42 +8,29 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import report_loader
 import tranche
 
-MAX_FILE_BYTES = 128 * 1024 * 1024
-MAX_TOTAL_BYTES = 256 * 1024 * 1024
-MAX_INPUT_FILES = 512
 MAX_RESULT_BYTES = 1024 * 1024
+
+# The bounded-input fingerprints and the validation predicates live in
+# `report_loader`, which the evidence CLI consumes too. One authority for the
+# bound report, two consumers with different response contracts.
+MAX_FILE_BYTES = report_loader.DEFAULT_LIMITS.max_file_bytes
+MAX_TOTAL_BYTES = report_loader.DEFAULT_LIMITS.max_total_bytes
+MAX_INPUT_FILES = report_loader.DEFAULT_LIMITS.max_input_files
 
 
 def input_digests():
-    """Bounded byte fingerprints include optional files and corpus membership."""
-    snapshot = tranche.PAGES_DIR / "snapshot.json"
-    sources = [snapshot] if snapshot.exists() else sorted(tranche.PAGES_DIR.glob("page_*.json"))
-    paths = [snapshot, *sources, tranche.JUDGMENTS_PATH, tranche.PAIRS_PATH,
-             *(tranche.OUT_DIR / name for name in
-               ("summary.json", "clusters.json", "dupes.json", "batches.json"))]
-    if len(paths) > MAX_INPUT_FILES:
-        raise ReportError("Input file count exceeds limit")
-    result, total = {}, 0
-    for path in dict.fromkeys(paths):
-        if not path.exists():
-            result[str(path)] = None
-            continue
-        with path.open("rb") as stream:
-            data = stream.read(MAX_FILE_BYTES + 1)
-        total += len(data)
-        if len(data) > MAX_FILE_BYTES or total > MAX_TOTAL_BYTES:
-            raise ReportError("Input bytes exceed limit")
-        result[str(path)] = hashlib.sha256(data).hexdigest()
-    return result
+    """Fingerprint the bound inputs under this module's advertised bounds."""
+    return report_loader.input_digests(
+        report_loader.Limits(MAX_FILE_BYTES, MAX_TOTAL_BYTES, MAX_INPUT_FILES))
 
 DISCLAIMER = ("Model suggestions from titles and shortened descriptions, not merge/close "
               "approval. Patches, CI, reproductions and security have not been verified.")
 
 
-class ReportError(ValueError):
-    """The local observation cannot safely be served."""
+ReportError = report_loader.ReportError
 
 
 def result_text(result):
@@ -57,62 +43,31 @@ def result_text(result):
 
 class Reports:
     def _load(self):
+        """Validate the bound report, then apply what is specific to MCP.
+
+        `report_loader` owns the report gates - current snapshot, bindings,
+        output digests, recomputed batches and park record. This method adds the
+        before/after input fingerprint that only a long-lived server needs, so a
+        file changing under the read is refused rather than half-served.
+        """
+        before = input_digests()
         try:
-            before = input_digests()
-            self._read()
-            if input_digests() != before:
-                raise ReportError("Report files changed during read; retry")
-            self.identity["input_bytes"] = before
+            report = report_loader.load()
         except ReportError:
             raise
-        except (OSError, ValueError, TypeError, KeyError, AttributeError, tranche.TrancheFatal) as exc:
+        except Exception as exc:
             raise ReportError("Invalid or missing bound reports; rerun cluster and batches") from exc
+        self._adopt(report)
+        if input_digests() != before:
+            raise ReportError("Report files changed during read; retry")
+        self.identity["input_bytes"] = before
 
-    def _read(self):
-        summary = json.loads((tranche.OUT_DIR / "summary.json").read_text())
-        clusters = json.loads((tranche.OUT_DIR / "clusters.json").read_text())
-        dupes = json.loads((tranche.OUT_DIR / "dupes.json").read_text())
-        prs = tranche.load_prs()
-        if tranche.JUDGMENTS_PATH.exists():
-            for line in tranche.JUDGMENTS_PATH.read_text().splitlines():
-                if line.strip() and not isinstance(json.loads(line), dict):
-                    raise ReportError("Malformed judgment record")
-        judgments = tranche.current_judgments(prs)
-        # Only the producer's current projection, which the report must bind.
-        pairs = tranche.current_pairs(prs, judgments)
-        if tranche.PAIRS_PATH.exists():
-            for line in tranche.PAIRS_PATH.read_text().splitlines():
-                if line.strip() and not isinstance(json.loads(line), dict):
-                    raise ReportError("Malformed pair record")
-        expected = {"clusters.json": tranche.digest(clusters), "dupes.json": tranche.digest(dupes)}
-        if (summary.get("format_version") != 2 or summary.get("repo") != tranche.REPO
-                or summary.get("allow_unbound") is not False
-                or summary.get("report_binding") != tranche.report_binding(prs, judgments, pairs)
-                or summary.get("output_digests") != expected):
-            raise ReportError("Reports are stale, unbound, foreign or modified; rerun cluster")
-        batches_path = tranche.OUT_DIR / "batches.json"
-        batches = json.loads(batches_path.read_text()) if batches_path.exists() else None
-        if batches is not None and tranche.digest(batches) != tranche.digest(tranche.merge_batches(
-                dupes, judgments, prs, expected["dupes.json"])):
-            raise ReportError("batches.json is stale or modified; rerun batches")
-        # Issue #8: the park record is part of the same observation as the
-        # batches it gated. It must match the producer predicate byte for byte
-        # whenever batches parked PRs, and is otherwise refused as modified.
-        parked_path = tranche.OUT_DIR / "parked.json"
-        parked = json.loads(parked_path.read_text()) if parked_path.exists() else None
-        if parked is not None and tranche.digest(parked) != tranche.digest(tranche.parked_payload(
-                tranche.park_state(dupes, judgments, prs), prs, judgments, expected["dupes.json"])):
-            raise ReportError("parked.json is stale or modified; rerun batches")
-        if (batches or {}).get("parked_prs") and parked is None:
-            raise ReportError("batches.json parked PRs but parked.json is missing; rerun batches")
-        self.batches, self.parked = batches, parked
-        self.summary, self.clusters, self.dupes = summary, clusters, dupes
-        self.prs, self.judgments, self.pairs = prs, judgments, pairs
-        self.latest_judgments = tranche.load_done()
-        self.identity = {"report_binding": summary["report_binding"],
-                         "batches.json": tranche.digest(batches) if batches is not None else None,
-                         "parked.json": tranche.digest(parked) if parked is not None else None,
-                         **summary["output_digests"]}
+    def _adopt(self, report):
+        self.summary, self.clusters, self.dupes = report.summary, report.clusters, report.dupes
+        self.batches, self.parked = report.batches, report.parked
+        self.prs, self.judgments, self.pairs = report.prs, report.judgments, report.pairs
+        self.latest_judgments = report.latest_judgments
+        self.identity = dict(report.identity)
 
     def _envelope(self, **data):
         result = {"repo": tranche.REPO, "disclaimer": DISCLAIMER,
