@@ -76,14 +76,14 @@ promise that every unknown field is refused.
   identity, rather than inventing missing projection fields.
 
 Selection uses the authoritative bound-report loader in
-[`report_loader.py`](../report_loader.py), shared with the report consumers.
+`tranche_core::report`, shared with the report consumers.
 Opaque report digests associate evidence with a validated report; they neither
 reconstruct that report offline nor authenticate the source bytes. A batch ID
 such as `B001` is a display ordinal, never a sufficient evidence identity.
 
 `generation_id(selection, capture_id)` computes the native object digest of:
 
-```python
+```text
 {
     "format": FORMAT,
     "profile": PROFILE,
@@ -224,7 +224,7 @@ Native implementation tests are in
 [`tests/test_ghread.py`](../tests/test_ghread.py):
 
 ```bash
-python3 -m unittest tests.test_evidence tests.test_ghread -v
+cargo test -p tranche-core
 ```
 
 The original proposal's
@@ -245,7 +245,7 @@ valuable **historical synthetic conformance support**:
   acquisition behaviour.
 
 Run those preserved cases with
-`python3 -m unittest tests.test_evidence_packet -v`. Keeping them credits and
+`cargo test -p tranche-core`. Keeping them credits and
 retains the proposal work without requiring native state or exports to conform
 to its historical layout. Any native wire-format claim must instead be checked
 against the native producer and its tests.

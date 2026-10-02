@@ -24,3 +24,6 @@ skills-lock.json
 # runtime data; fixtures and deliberately published output are a different
 # category and are tracked on purpose.
 out/evidence/
+
+# Rust build artifacts; the lockfile is tracked for reproducible CLI builds.
+/target/

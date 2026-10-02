@@ -1,0 +1,144 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing v-prefixed tag to publish (backfill)"
+        required: true
+
+env:
+  RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+  BIN: tranche
+  TARGET: x86_64-unknown-linux-gnu
+
+jobs:
+  verify:
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - run: rustup show
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+
+  build:
+    needs: verify
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Build
+        run: cargo build --locked --release --target "$TARGET" -p tranche-cli
+      - name: Exercise it before shipping it
+        run: |
+          "./target/$TARGET/release/$BIN" --help
+          version="${RELEASE_TAG#v}"
+          reported=$("./target/$TARGET/release/$BIN" --version | awk '{print $NF}')
+          test "$reported" = "$version" || {
+            echo "the binary reports $reported but the tag is $version" >&2
+            exit 1
+          }
+      - name: Package
+        run: |
+          name="$BIN-$RELEASE_TAG-$TARGET"
+          mkdir -p "dist/$name"
+          cp "target/$TARGET/release/$BIN" "dist/$name/"
+          cp README.md LICENSE "dist/$name/"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+          (cd dist && sha256sum "$name.tar.gz" > "$name.tar.gz.sha256")
+          ls -l dist
+      - uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: rust
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+
+      - uses: https://data.forgejo.org/forgejo/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      # The notes are the tagged version's own CHANGELOG section: the generator
+      # owns CHANGELOG.md, so the release can never drift from it.
+      - name: Extract the tagged CHANGELOG section
+        run: |
+          version="${RELEASE_TAG#v}"
+          body=$(awk -v ver="$version" '
+            $0 ~ ("^## \\[" ver "\\][ (]") {found=1; next}
+            found && /^## \[/ {exit}
+            found {print}
+          ' CHANGELOG.md)
+          if [ -z "$(printf '%s' "$body" | tr -d '[:space:]')" ]; then
+            echo "No CHANGELOG section for ${version} — cut the release with commit-and-tag-version first." >&2
+            exit 1
+          fi
+          printf '%s\n' "$body" > release-notes.md
+
+      # Forgejo publishes with a token, not the `gh` client. The tag already
+      # exists locally, so the release is created against it by name.
+      - name: Create the Forgejo release
+        env:
+          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          SERVER: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          # Escape the notes into a JSON string with awk rather than pulling in
+          # an encoder: a release job should need nothing but the toolchain.
+          notes=$(awk '{gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); printf "%s\\n", $0}' release-notes.md)
+          payload=$(printf '{"tag_name":"%s","name":"%s","body":"%s","draft":false}' \
+            "$RELEASE_TAG" "$RELEASE_TAG" "$notes")
+          exists=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: token $TOKEN" \
+            "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG")
+          if [ "$exists" = "200" ]; then
+            curl -fsS -X PATCH -H "Authorization: token $TOKEN" \
+              -H 'Content-Type: application/json' -d "$payload" \
+              "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG" > /dev/null
+          else
+            curl -fsS -X POST -H "Authorization: token $TOKEN" \
+              -H 'Content-Type: application/json' -d "$payload" \
+              "$SERVER/api/v1/repos/$REPOSITORY/releases" > /dev/null
+          fi
+
+      - name: Attach the archive and its checksum
+        env:
+          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          SERVER: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          for asset in dist/*.tar.gz dist/*.sha256; do
+            curl -fsS -X POST -H "Authorization: token $TOKEN" \
+              -F "attachment=@$asset" \
+              "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG/assets?name=$(basename "$asset")" \
+              > /dev/null
+            echo "attached $(basename "$asset")"
+          done
+
+      - name: Prove the release is complete
+        env:
+          TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          SERVER: ${{ github.server_url }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          curl -fsS -H "Authorization: token $TOKEN" \
+            "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG" \
+            | grep -o '"name":"[^"]*"\|"size":[0-9]*'
+          count=$(curl -fsS -H "Authorization: token $TOKEN" \
+            "$SERVER/api/v1/repos/$REPOSITORY/releases/tags/$RELEASE_TAG" \
+            | grep -c '"browser_download_url"')
+          echo "assets: $count"
+          test "$count" -ge 2

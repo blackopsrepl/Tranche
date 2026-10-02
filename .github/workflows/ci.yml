@@ -1,0 +1,72 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The pipeline reproduces committed artifacts byte for byte, so the tests
+      # read the real corpus in the checkout. Nothing here calls a model or
+      # reaches the network.
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt,clippy
+          rustup default stable
+          rustc --version && cargo --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --locked
+
+      # The workbench is a static frontend over the published report; its tests
+      # need no toolchain beyond Node.
+      - name: Workbench
+        run: node --test tests/workbench.test.cjs
+
+      - name: Whitespace
+        run: git diff --check
+
+  # The binary must build and run where no interpreter is installed. This is the
+  # claim the project makes, so it is a gate rather than an assertion.
+  binary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --locked --release -p tranche-cli
+      - name: The command tree opens
+        run: ./target/release/tranche --help
+      - name: A root without reports is refused, not crashed
+        run: |
+          set +e
+          ./target/release/tranche --root "$(mktemp -d)" cluster >/dev/null 2>err.txt
+          status=$?
+          set -e
+          test "$status" -ne 0
+          ! grep -qi 'panic' err.txt

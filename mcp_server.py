@@ -159,7 +159,7 @@ class Reports:
         if not isinstance(batch_id, str) or re.fullmatch(r"B[0-9]{3,6}", batch_id) is None:
             raise ReportError("Expected exact batch id such as B001")
         if self.batches is None:
-            raise ReportError("batches.json is unavailable; run tranche.py batches")
+            raise ReportError("batches.json is unavailable; run `tranche batches`")
         for batch in self.batches["batches"]:
             if batch["id"] == batch_id:
                 return batch
@@ -175,7 +175,7 @@ class Reports:
     def next_prompt(self, after: int | str | None = None):
         self._load()
         if self.batches is None:
-            raise ReportError("batches.json is unavailable; run tranche.py batches")
+            raise ReportError("batches.json is unavailable; run `tranche batches`")
         if isinstance(after, str):
             after = self._batch(after)["ordinal"]
         if after is None:

@@ -1,5 +1,5 @@
 # Tranche Makefile
-# Jev-powered triage pipeline with colorized output
+# Jev-powered triage pipeline, native Rust
 
 # ============== Colors & Symbols ==============
 GREEN := \033[92m
@@ -22,20 +22,15 @@ SCALE := ⚖️
 # ============== Project Metadata ==============
 REPO := blackopsrepl/Tranche
 LIVE_URL := https://vdistefano.studio/Tranche/
-# One interpreter for every target. `PYTHON` (env or command line) wins;
-# otherwise hostpython.py resolves it.
-PYTHON_CMD ?= python3
-ifeq ($(strip $(PYTHON)),)
-PYTHON := $(shell $(PYTHON_CMD) hostpython.py 2>/dev/null)
-endif
-ifeq ($(strip $(PYTHON)),)
-$(error No usable Python interpreter: '$(PYTHON_CMD) hostpython.py' failed)
-endif
 JUDGED := $(shell test -f out/judgments.jsonl && wc -l < out/judgments.jsonl || echo 0)
 PAIRED := $(shell test -f out/pair_verdicts.jsonl && wc -l < out/pair_verdicts.jsonl || echo 0)
+# The pipeline is the native binary. `tranche` resolves from PATH;
+# `make cli-install` builds and installs it from this checkout. Override with
+# TRANCHE=./target/debug/tranche to run an uninstalled build.
+TRANCHE ?= tranche
 
 # ============== Phony Targets ==============
-.PHONY: banner help fetch refresh judge judge-full dupes cluster page gif all evidence evidence-show publish verify info clean-judgments test check mcp-check print-interpreter release-check release-dry-run release
+.PHONY: banner help fetch refresh judge judge-full dupes cluster batches page all evidence evidence-show publish verify info clean-judgments test check cli-install release-check release-dry-run release
 
 # ============== Default Target ==============
 .DEFAULT_GOAL := help
@@ -55,7 +50,7 @@ fetch: banner
 	@printf "$(CYAN)$(BOLD)╔══════════════════════════════════════╗$(RESET)\n"
 	@printf "$(CYAN)$(BOLD)║        Fetching Open PRs             ║$(RESET)\n"
 	@printf "$(CYAN)$(BOLD)╚══════════════════════════════════════╝$(RESET)\n\n"
-	@$(PYTHON) tranche.py fetch --transport gh
+	@$(TRANCHE) fetch --transport gh
 
 # ============== Jev Pipeline ==============
 
@@ -64,7 +59,7 @@ judge: banner
 	@printf "$(CYAN)$(BOLD)║        Jev Judgment Pass             ║$(RESET)\n"
 	@printf "$(CYAN)$(BOLD)╚══════════════════════════════════════╝$(RESET)\n\n"
 	@printf "$(ARROW) $(BOLD)Judging PRs (7 typed questions, one batched call each)...$(RESET)\n"
-	@$(PYTHON) tranche.py judge --resume && \
+	@$(TRANCHE) judge --resume && \
 		printf "$(GREEN)$(CHECK) Judgments saved to out/judgments.jsonl$(RESET)\n\n" || \
 		(printf "$(RED)$(CROSS) Judge pass failed$(RESET)\n\n" && exit 1)
 
@@ -72,31 +67,30 @@ judge-full: banner
 	@printf "$(RED)$(BOLD)WARNING: fresh pass over all PRs — ~5M input tokens on Jev$(RESET)\n"
 	@printf "$(YELLOW)Press Ctrl+C to abort, or Enter to continue...$(RESET)\n"
 	@read dummy
-	@$(PYTHON) tranche.py judge
+	@$(TRANCHE) judge
 
 dupes: banner
 	@printf "$(ARROW) $(BOLD)Comparing candidate pairs with Jev sameness judgments...$(RESET)\n"
-	@$(PYTHON) tranche.py dupes && \
+	@$(TRANCHE) dupes && \
 		printf "$(GREEN)$(CHECK) Pair verdicts in out/pair_verdicts.jsonl$(RESET)\n\n" || \
 		(printf "$(RED)$(CROSS) Dupe pass failed$(RESET)\n\n" && exit 1)
 
 cluster: banner
 	@printf "$(ARROW) $(BOLD)Clustering tranches, dupes, escalation lists...$(RESET)\n"
-	@$(PYTHON) tranche.py cluster
+	@$(TRANCHE) cluster
+
+# Issue #4/#8: cumulative pre-release batches and the park record.
+batches: banner
+	@printf "$(ARROW) $(BOLD)Classifying review candidates into cumulative batches...$(RESET)\n"
+	@$(TRANCHE) batches
 
 # ============== Output ==============
 
 page: banner
 	@printf "$(ARROW) $(BOLD)Rendering GitHub Pages report from out/ data...$(RESET)\n"
-	@$(PYTHON) gen_page.py && \
+	@$(TRANCHE) page && \
 		printf "$(GREEN)$(CHECK) docs/index.html written$(RESET)\n\n" || \
 		(printf "$(RED)$(CROSS) Page generation failed$(RESET)\n\n" && exit 1)
-
-gif: banner
-	@printf "$(ARROW) $(BOLD)Rendering title GIF with glyphfx (capture → rasterize)...$(RESET)\n"
-	@$(PYTHON) tools/make_title_gif.py && \
-		printf "$(GREEN)$(CHECK) docs/assets/tranche.gif written$(RESET)\n\n" || \
-		(printf "$(RED)$(CROSS) GIF generation failed$(RESET)\n\n" && exit 1)
 
 # ============== Composite Targets ==============
 
@@ -104,7 +98,7 @@ refresh: banner
 	@printf "$(CYAN)$(BOLD)╔══════════════════════════════════════╗$(RESET)\n"
 	@printf "$(CYAN)$(BOLD)║     Incremental Refresh (all)        ║$(RESET)\n"
 	@printf "$(CYAN)$(BOLD)╚══════════════════════════════════════╝$(RESET)\n\n"
-	@$(PYTHON) tranche.py refresh --max-pairs $(if $(MAX_PAIRS),$(MAX_PAIRS),400)
+	@$(TRANCHE) refresh --max-pairs $(if $(MAX_PAIRS),$(MAX_PAIRS),400)
 
 # Issue #9: capture the public evidence of one native batch, locally and ignored.
 evidence: banner
@@ -112,10 +106,10 @@ evidence: banner
 	@printf "$(CYAN)$(BOLD)║     Evidence capture (batch)          ║$(RESET)\n"
 	@printf "$(CYAN)$(BOLD)╚══════════════════════════════════════╝$(RESET)\n\n"
 	@test -n "$(BATCH)" || (printf "$(RED)Usage: make evidence BATCH=B001 [BUDGET=200]$(RESET)\n" && exit 2)
-	@$(PYTHON) tranche.py evidence capture --batch $(BATCH) --request-budget $(if $(BUDGET),$(BUDGET),200)
+	@$(TRANCHE) evidence capture --batch $(BATCH) --request-budget $(if $(BUDGET),$(BUDGET),200)
 
 evidence-show: banner
-	@$(PYTHON) tranche.py evidence show --batch $(BATCH)
+	@$(TRANCHE) evidence show --batch $(BATCH)
 
 all:
 	@$(MAKE) fetch
@@ -148,8 +142,7 @@ verify: banner
 		(printf "$(RED)$(CROSS) Live check failed (HTTP $$code)$(RESET)\n\n" && exit 1)
 
 info: banner
-	@$(PYTHON) -c "import json; s=json.load(open('out/summary.json')); [print(f'  $(CYAN){k:>22}$(RESET)  {v}') for k,v in s.items()]"
-	@printf "\n"
+	@$(TRANCHE) info
 
 # ============== Danger Zone ==============
 
@@ -161,23 +154,16 @@ clean-judgments: banner
 		printf "$(GREEN)$(CHECK) Judgment cache cleared$(RESET)\n\n"
 
 test:
-	@$(PYTHON) -m unittest discover -s tests -v
+	@cargo test --locked
 
 check: test
+	@cargo fmt --check
+	@cargo clippy --locked --all-targets -- -D warnings
 	@if command -v node >/dev/null 2>&1; then node --test tests/workbench.test.cjs; else printf 'Node unavailable; optional frontend tests skipped.\n'; fi
-	@ruff check .
-	@$(PYTHON) -m compileall -q tranche.py gen_page.py hostpython.py mcp_server.py report_loader.py ghread.py evidence.py tests tools
 	@git diff --check
 
-# Real-client subprocess check against the current local corpus, separate from
-# the offline gates. MCP_PYTHON supplies the MCP client SDK; the server imports
-# nothing, so it defaults to the same interpreter.
-MCP_PYTHON ?= $(PYTHON)
-mcp-check:
-	@TRANCHE_MCP_INTEGRATION=1 $(MCP_PYTHON) -m unittest tests.test_mcp_stdio -v
-
-print-interpreter:
-	@printf '%s\n' '$(PYTHON)'
+cli-install:
+	@cargo install --path . --locked
 
 release-check: check
 	@node --check .versionrc.js
@@ -198,11 +184,12 @@ help: banner
 	@/bin/echo -e "  $(GREEN)make judge$(RESET)         - Jev pass over unjudged PRs (resume-safe)"
 	@/bin/echo -e "  $(GREEN)make dupes$(RESET)         - Compare candidate pairs with Jev"
 	@/bin/echo -e "  $(GREEN)make cluster$(RESET)       - Build tranches, dupe groups, escalation lists"
+	@/bin/echo -e "  $(GREEN)make batches$(RESET)       - Build cumulative pre-release batches and the park record"
 	@/bin/echo -e "  $(GREEN)make refresh$(RESET)       - $(BOLD)Deterministic incremental refresh of everything$(RESET)"
+	@/bin/echo -e "  $(GRAY)Every stage runs the native frontend: tranche fetch|judge|dupes|cluster|batches|refresh|page$(RESET)"
 	@/bin/echo -e ""
 	@/bin/echo -e "$(CYAN)$(BOLD)Output:$(RESET)"
 	@/bin/echo -e "  $(GREEN)make page$(RESET)          - Render docs/index.html from out/ data"
-	@/bin/echo -e "  $(GREEN)make gif$(RESET)           - Re-render the glyphfx title GIF"
 	@/bin/echo -e ""
 	@/bin/echo -e "$(CYAN)$(BOLD)Composite:$(RESET)"
 	@/bin/echo -e "  $(GREEN)make all$(RESET)           - $(YELLOW)$(BOLD)fetch → judge → dupes → cluster → page$(RESET)"
@@ -213,8 +200,13 @@ help: banner
 	@/bin/echo -e "  $(GREEN)make evidence BATCH=B001$(RESET) - Capture one batch's public evidence (read-only)"
 	@/bin/echo -e "  $(GREEN)make evidence-show BATCH=B001$(RESET) - Inspect the current batch's coverage"
 	@/bin/echo -e ""
+	@/bin/echo -e "$(CYAN)$(BOLD)Rust toolchain:$(RESET)"
+	@/bin/echo -e "  $(GREEN)make cli-install$(RESET)   - Build and install the tranche binary from this checkout"
+	@/bin/echo -e "  $(GRAY)Override the binary with TRANCHE=./target/debug/tranche$(RESET)"
+	@/bin/echo -e ""
 	@/bin/echo -e "$(CYAN)$(BOLD)Release:$(RESET)"
-	@/bin/echo -e "  $(GREEN)make check$(RESET)         - Offline tests, Ruff, syntax and whitespace"
+	@/bin/echo -e "  $(GREEN)make test$(RESET)          - Cargo tests over the workspace"
+	@/bin/echo -e "  $(GREEN)make check$(RESET)         - Tests plus format, clippy and whitespace"
 	@/bin/echo -e "  $(GREEN)make release-dry-run$(RESET) - Preview version/changelog on clean master"
 	@/bin/echo -e "  $(GREEN)make release$(RESET)       - Gate, bump VERSION, generate changelog, commit + tag"
 	@/bin/echo -e ""

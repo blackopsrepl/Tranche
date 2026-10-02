@@ -11,7 +11,7 @@ disagree with each other:
 | Surface | File | Audience |
 | --- | --- | --- |
 | Workbench | `docs/index.html` + `docs/data/workbench.json` | a human triaging the backlog |
-| Evidence CLI | `tranche.py evidence …` (`evidence.py`) | a reviewer, and the workbench/MCP later |
+| CLI | `tranche` (Rust frontend over `tranche.py` / `evidence.py`) | an operator, and the workbench/MCP later |
 | MCP server | `mcp_server.py` | an AI agent asking bounded questions |
 
 ## 1. Workbench
@@ -87,7 +87,7 @@ A capture is **not** a workbench view. Its output is a coverage report plus, on
 request, a byte window or a resolved citation. The shape:
 
 ```
-$ python3 tranche.py evidence capture --batch B001 --request-budget 100
+$ tranche evidence capture --batch B001 --request-budget 100
 capture <32 hex>  batch B001  generation <sha>…  INCOMPLETE | COMPLETE
   observed <Z>  stop request_budget|none  requests 37/100 (failures 0, …)
   281655 bytes stored, 40 citations
@@ -99,7 +99,7 @@ capture <32 hex>  batch B001  generation <sha>…  INCOMPLETE | COMPLETE
       checks           complete    4p    0c  [check_runs=complete, statuses=complete,
                                               fork_check_runs=complete, fork_statuses=complete]
       …
-  resume: python3 tranche.py evidence capture --batch B001 --reuse-capture <id>
+  resume: tranche evidence capture --batch B001 --reuse-capture <id>
 ```
 
 ### Required behaviour
@@ -134,7 +134,7 @@ from. Tools today: `surface`, `query`, `pick`, `next_prompt`, `related`,
 - **Refuse stale, foreign, unbound or modified reports** before answering, using
   the same loader the CLI uses.
 - **Bounded schemas**: advertised `inputSchema` with enums, bounds and patterns;
-  arguments are validated against it, not by Python signature errors.
+  arguments are validated against it, not by an implementation's signature errors.
 - **Never serve historical stale cache rows** as current; the producer's
   projection is the only one published.
 - **Prompt picking stays stateless and read-only**.
