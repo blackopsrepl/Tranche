@@ -71,6 +71,146 @@ fn text_of(response: &Value) -> Value {
 }
 
 #[test]
+fn initialized_notifications_preserve_following_responses() {
+    let root = root();
+    let responses = exchange(
+        root.path(),
+        &[
+            serde_json::json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}),
+            serde_json::json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+            serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/list"}),
+            serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"query","arguments":{"text":"suspend","limit":3}}}),
+        ],
+    );
+    assert_eq!(responses.len(), 3);
+    for (response, id) in responses.iter().zip([1, 2, 3]) {
+        assert_eq!(response["id"], id);
+        assert!(response.get("error").is_none());
+    }
+    assert_eq!(responses[2]["result"]["isError"], false);
+    assert!(text_of(&responses[2])["items"].is_array());
+}
+
+#[test]
+fn numeric_batch_cursors_advance_like_exact_batch_ids() {
+    let root = root();
+    let responses = exchange(
+        root.path(),
+        &[
+            serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"next_prompt","arguments":{"after":"B001"}}}),
+            serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"next_prompt","arguments":{"after":1}}}),
+            serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"next_prompt","arguments":{"after":100000}}}),
+        ],
+    );
+    assert_eq!(responses.len(), 3);
+    assert_eq!(responses[0]["result"]["isError"], false);
+    assert_eq!(text_of(&responses[0]), text_of(&responses[1]));
+    assert_eq!(responses[2]["result"]["isError"], true);
+}
+
+#[test]
+fn parked_search_agrees_with_coverage() {
+    let root = root();
+    let responses = exchange(
+        root.path(),
+        &[
+            serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"surface","arguments":{}}}),
+            serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"queue":"parked","limit":100}}}),
+        ],
+    );
+    let surface = text_of(&responses[0]);
+    let query = text_of(&responses[1]);
+    assert!(surface["parked"]["count"].as_u64().expect("count") > 0);
+    assert_eq!(query["total"], surface["parked"]["count"]);
+    for row in query["items"].as_array().expect("items") {
+        assert!(
+            surface["parked"]["members"]
+                .as_array()
+                .expect("members")
+                .contains(&row["number"])
+        );
+    }
+}
+
+#[test]
+fn omitted_arguments_are_empty_but_explicit_null_is_refused() {
+    let root = root();
+    let responses = exchange(
+        root.path(),
+        &[
+            serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"digests"}}),
+            serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"digests","arguments":null}}),
+        ],
+    );
+    assert_eq!(responses[0]["result"]["isError"], false);
+    assert!(text_of(&responses[0])["digests"]["report_binding"].is_string());
+    assert_eq!(responses[1]["result"]["isError"], true);
+}
+
+#[test]
+fn every_tool_returns_the_same_binding_and_exact_prompt() {
+    let root = root();
+    let responses = exchange(
+        root.path(),
+        &[
+            serde_json::json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"surface","arguments":{}}}),
+            serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"query","arguments":{"limit":1}}}),
+            serde_json::json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"pick","arguments":{"batch_id":"B001"}}}),
+            serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"next_prompt","arguments":{}}}),
+            serde_json::json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"related","arguments":{"number":13459}}}),
+            serde_json::json!({"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"digests","arguments":{}}}),
+        ],
+    );
+    assert_eq!(responses.len(), 6);
+    let answers: Vec<_> = responses.iter().map(text_of).collect();
+    for (response, answer) in responses.iter().zip(&answers) {
+        assert_eq!(response["result"]["isError"], false);
+        assert_eq!(answer["digests"], answers[0]["digests"]);
+    }
+    assert_eq!(
+        answers[2]["batch"]["review_prompt"],
+        answers[3]["batch"]["review_prompt"]
+    );
+    assert!(
+        !answers[4]["items"]
+            .as_array()
+            .expect("relationships")
+            .is_empty()
+    );
+}
+
+#[test]
+fn unchecked_clients_cannot_bypass_advertised_argument_bounds() {
+    let root = root();
+    let cases = [
+        ("query", serde_json::json!({"limit":true})),
+        ("query", serde_json::json!({"limit":101})),
+        ("query", serde_json::json!({"offset":-1})),
+        ("query", serde_json::json!({"text":"x".repeat(513)})),
+        ("query", serde_json::json!({"queue":"invented"})),
+        ("query", serde_json::json!({"finished_form":4})),
+        ("pick", serde_json::json!({"batch_id":"B001-extra"})),
+        ("next_prompt", serde_json::json!({"after":-1})),
+        ("related", serde_json::json!({"number":0})),
+        ("surface", serde_json::json!({"unexpected":true})),
+        ("digests", serde_json::json!({"unexpected":true})),
+    ];
+    let requests: Vec<_> = cases.iter().enumerate().map(|(id, (name, args))| {
+        serde_json::json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":args}})
+    }).collect();
+    let responses = exchange(root.path(), &requests);
+    assert_eq!(responses.len(), cases.len());
+    for response in responses {
+        assert_eq!(response["result"]["isError"], true);
+        let message = response["result"]["content"][0]["text"]
+            .as_str()
+            .expect("refusal");
+        assert!(!message.is_empty());
+        assert!(!message.contains("panicked"));
+    }
+}
+
+#[test]
 fn initialize_echoes_a_known_protocol_version_and_lists_the_tools() {
     let root = root();
     let responses = exchange(

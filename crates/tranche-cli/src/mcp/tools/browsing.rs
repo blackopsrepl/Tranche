@@ -55,7 +55,7 @@ impl View {
         }))
     }
 
-    pub fn next_prompt(&self, after: Option<&str>) -> Result<Value, ReportError> {
+    pub fn next_prompt(&self, after: Option<&Value>) -> Result<Value, ReportError> {
         let Some(batches) = self.batches.as_ref() else {
             return Err(ReportError(
                 "batches.json is unavailable; run `tranche batches`".to_owned(),
@@ -63,13 +63,11 @@ impl View {
         };
         let all = batches["batches"].as_array().cloned().unwrap_or_default();
         let after_ordinal: u64 = match after {
-            Some(text) if text.starts_with('B') => {
-                self.find_batch(text)?["ordinal"].as_u64().unwrap_or(0)
-            }
-            Some(text) => text.parse().map_err(|_| {
+            Some(Value::String(text)) => self.find_batch(text)?["ordinal"].as_u64().unwrap_or(0),
+            None | Some(Value::Null) => 0,
+            Some(value) => value.as_u64().ok_or_else(|| {
                 ReportError("after must be an existing batch id or ordinal (0 starts)".to_owned())
             })?,
-            None => 0,
         };
         if after_ordinal > all.len() as u64 {
             return Err(ReportError(

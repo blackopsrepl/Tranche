@@ -95,7 +95,10 @@ fn dispatch(root: &tranche_core::report::Root, message: &Value) -> Option<Value>
                     Some(request_id),
                 ));
             }
-            let arguments = message["params"]["arguments"].clone();
+            let arguments = message["params"]
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
             match call_tool(root, name, &arguments) {
                 Ok(result) => Some(json!({
                     "jsonrpc": "2.0", "id": request_id, "result": {
@@ -158,7 +161,7 @@ fn call_tool(
             limit: u64_arg(&arguments, "limit").unwrap_or(25),
         })?,
         "pick" => view.pick(str_arg(&arguments, "batch_id").unwrap_or(""))?,
-        "next_prompt" => view.next_prompt(str_arg(&arguments, "after"))?,
+        "next_prompt" => view.next_prompt(arguments.get("after"))?,
         "related" => view.related(
             arguments
                 .get("number")

@@ -84,7 +84,16 @@ impl View {
                     "senior" => "senior",
                     "followup" => "followup",
                     "related" => "related",
-                    "parked" => "parked",
+                    "parked" => {
+                        if !row["parked"]
+                            .as_array()
+                            .is_some_and(|reasons| !reasons.is_empty())
+                        {
+                            continue;
+                        }
+                        matched.push(row);
+                        continue;
+                    }
                     other => return Err(ReportError(format!("unknown queue {other}"))),
                 };
                 if !row[field].as_bool().unwrap_or(false) {
@@ -92,14 +101,6 @@ impl View {
                 }
             }
             matched.push(row);
-        }
-        // Issue #8: an empty reason array never parks.
-        if queue == "parked" {
-            matched.retain(|row| {
-                row["parked"]
-                    .as_array()
-                    .is_some_and(|reasons| !reasons.is_empty())
-            });
         }
         let total = matched.len() as u64;
         let end = ((offset + limit) as usize).min(matched.len());
