@@ -12,6 +12,18 @@ pub fn read_report(
     _limits: &Limits,
     allow_unbound: bool,
 ) -> Result<BoundReport, ReportError> {
+    read_report_mode(root, _limits, allow_unbound, true)
+}
+/// Regeneration validates every report except the proposal it replaces.
+pub fn read_for_assignment(root: &Root, limits: &Limits) -> Result<BoundReport, ReportError> {
+    read_report_mode(root, limits, false, false)
+}
+fn read_report_mode(
+    root: &Root,
+    _limits: &Limits,
+    allow_unbound: bool,
+    validate_assignment: bool,
+) -> Result<BoundReport, ReportError> {
     use crate::domain::{cluster::cluster, dupe::current_pairs, judge, pr::load_prs};
 
     let summary = read_json(&root.summary_path())?;
@@ -109,6 +121,25 @@ pub fn read_report(
         ));
     }
 
+    // The assignment record is part of the same observation as the batches.
+    let assignments = if validate_assignment {
+        read_optional(root, &root.assignments_path())?
+    } else {
+        None
+    };
+    if let Some(assignments) = &assignments {
+        crate::domain::assignment::proposal::validate(
+            root,
+            assignments,
+            &prs,
+            &judgments,
+            &dupes,
+            batches.as_ref(),
+            &summary["report_binding"],
+        )
+        .map_err(Refuse::from)?;
+    }
+
     let mut identity = serde_json::Map::new();
     identity.insert(
         "report_binding".to_owned(),
@@ -125,6 +156,14 @@ pub fn read_report(
     identity.insert(
         "parked.json".to_owned(),
         parked
+            .as_ref()
+            .map(crate::util::digest)
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
+    );
+    identity.insert(
+        "assignments.json".to_owned(),
+        assignments
             .as_ref()
             .map(crate::util::digest)
             .map(serde_json::Value::String)
@@ -147,6 +186,7 @@ pub fn read_report(
         dupes,
         batches,
         parked,
+        assignments,
         prs,
         judgments,
         pairs,

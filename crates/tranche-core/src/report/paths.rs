@@ -53,6 +53,7 @@ pub struct BoundReport {
     pub dupes: serde_json::Value,
     pub batches: Option<serde_json::Value>,
     pub parked: Option<serde_json::Value>,
+    pub assignments: Option<serde_json::Value>,
     pub prs: crate::domain::pr::Prs,
     pub judgments: std::collections::HashMap<u64, crate::domain::judge::Judgment>,
     pub pairs: Vec<serde_json::Value>,
@@ -113,6 +114,10 @@ impl Root {
         self.out_dir().join("parked.json")
     }
 
+    pub fn assignments_path(&self) -> PathBuf {
+        self.out_dir().join("assignments.json")
+    }
+
     pub fn tranches_path(&self) -> PathBuf {
         self.out_dir().join("tranches.md")
     }
@@ -155,8 +160,18 @@ impl Root {
             "dupes.json",
             "batches.json",
             "parked.json",
+            "assignments.json",
         ] {
             paths.push(self.out_dir().join(name));
+        }
+        if self.assignments_path().exists() {
+            paths.push(self.path.join("skills.toml"));
+            paths.push(self.out_dir().join("qualifications.jsonl"));
+            paths.push(self.out_dir().join("requirements.jsonl"));
+            // Enumeration errors will be refused again during validation.
+            if let Ok(resumes) = crate::domain::assignment::team::resume_paths(self) {
+                paths.extend(resumes);
+            }
         }
         paths
     }

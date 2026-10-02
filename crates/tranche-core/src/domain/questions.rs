@@ -89,29 +89,6 @@ pub fn judge_questions() -> Value {
         "security_flag": {
             "type": "noul",
             "instructions": "Does this change touch credentials or secrets, download-and-execute remote code, sudo/permission changes, network exposure, or crypto material? Judge from `pr.title` and `pr.body`."
-        },
-        "required_skills": {
-            "type": "multi_label",
-            "instructions": {
-                "question": "Which skills does reviewing this pull request require? Read `pr.title`, `pr.body` and `pr.diffstat`. Select all that apply; use `none` when no special skill is needed."
-            },
-            "criteria": {
-                "packaging": "PKGBUILD, makepkg, package build, install scripts, Arch packaging",
-                "nvidia": "NVIDIA driver, GPU, graphics stack, CUDA, Optimus",
-                "waybar": "waybar config, modules, styling, CSS",
-                "release-engineering": "version bumps, changelog, release machinery, CI/CD",
-                "security-review": "credentials, permissions, network exposure, crypto, sudo",
-                "hardware-drivers": "wifi, bluetooth, audio, power, HiDPI, laptops, ARM/Snapdragon, firmware",
-                "desktop-config": "Hyprland, Walker, wlogout, mako, keybinds, wallpapers, theming",
-                "shell-cli": "zsh config, aliases, starship, CLI tool defaults, terminal usage",
-                "apps-integrations": "default apps, mime handling, new application integrations",
-                "update-release": "omarchy-update, version bumps, release machinery, migration between versions, boot entries",
-                "agents-ai": "AI coding agents, agent hooks, MCP, integrations for Claude/Codex/Gemini-like tools",
-                "docs": "README, documentation, wiki, help text",
-                "install-setup": "omarchy-setup menu, installer, first boot, ISO, dotfiles bootstrap",
-                "user-experience": "default/taste or look-and-feel proposals, themes, icons, fonts, bar or menu aesthetics",
-                "none": "no special skill needed for review"
-            }
         }
     })
 }
@@ -144,7 +121,6 @@ pub fn answer_field(question_type: &str) -> Option<&'static str> {
         "choice" => Some("choice"),
         "score" => Some("score"),
         "noul" => Some("noul"),
-        "multi_label" => Some("labels"),
         _ => None,
     }
 }

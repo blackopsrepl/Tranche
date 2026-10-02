@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use solverforge::prelude::*;
 
 /// A triage team member with Jev-judged qualifications.
-#[planning_entity]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[problem_fact]
+#[derive(Serialize, Deserialize)]
 pub struct Member {
     #[planning_id]
     pub id: String,
@@ -18,6 +18,7 @@ pub struct Member {
     pub resume_source: String,
     /// Dense index for the solver join, set during normalize.
     pub index: usize,
+    pub evidence_known: bool,
 }
 
 impl Member {
@@ -35,6 +36,7 @@ impl Member {
             capacity,
             resume_source: resume_source.into(),
             index: 0,
+            evidence_known: true,
         }
     }
 

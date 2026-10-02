@@ -23,6 +23,8 @@ serde = { workspace = true }
 # check except reading the file.
 serde_json = { workspace = true, features = ["arbitrary_precision", "preserve_order"] }
 regex = "1"
+solverforge = { version = "=0.19.7", features = ["serde"] }
+toml = "0.8"
 sha2 = "0.10"
 # The Jev client is one HTTPS POST to a fixed endpoint. `reqwest` carries the TLS
 # stack; `tokio` drives the retry backoff, which is the only async here.

@@ -1,18 +1,11 @@
-[phases]
+[termination]
+seconds_spent_limit = 2
+[[phases]]
 type = "construction_heuristic"
-construction_heuristic_type = "cheapest_insertion"
-construction_obligation = "assign_when_candidate_exists"
-value_candidate_limit = 90
-
+construction_heuristic_type = "first_fit"
 [[phases]]
 type = "local_search"
-[phases.acceptor]
-type = "late_acceptance"
-late_acceptance_size = 400
-[phases.forager]
-type = "accepted_count"
-limit = 4
-
-[termination]
-seconds_spent_limit = 12
-unimproved_seconds_spent_limit = 4
+[phases.termination]
+step_count_limit = 200
+[phases.move_selector]
+type = "change_move_selector"

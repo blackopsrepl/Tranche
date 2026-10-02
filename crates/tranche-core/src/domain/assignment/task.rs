@@ -5,7 +5,7 @@ use solverforge::prelude::*;
 
 /// A PR requiring assignment, with Jev-judged required skills.
 #[planning_entity]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AssignmentTask {
     #[planning_id]
     pub id: String,
@@ -19,6 +19,10 @@ pub struct AssignmentTask {
     pub cluster_id: Option<String>,
     /// Coarse category from the existing judgment.
     pub category: String,
+    /// One planning entity per atomic group; capacity counts every PR.
+    pub numbers: Vec<u64>,
+    /// Unknown evidence is never eligible.
+    pub evidence_known: bool,
     // @solverforge:begin entity-variables
     #[planning_variable(value_range_provider = "members", allows_unassigned = true)]
     pub member_idx: Option<usize>,
@@ -42,6 +46,8 @@ impl AssignmentTask {
             security_flag,
             cluster_id,
             category,
+            numbers: vec![pr_number],
+            evidence_known: true,
             member_idx: None,
         }
     }

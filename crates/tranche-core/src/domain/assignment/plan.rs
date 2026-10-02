@@ -11,7 +11,7 @@ use super::task::AssignmentTask;
     constraints = "crate::domain::assignment::constraints::create_constraints",
     solver_toml = "solver.toml"
 )]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct AssignmentPlan {
     #[problem_fact_collection]
     pub members: Vec<Member>,

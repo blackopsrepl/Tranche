@@ -160,7 +160,7 @@ fn publish_json<T: Serialize>(path: &Path, value: &T, indent: bool) -> io::Resul
 }
 
 /// JSON with the report's separators, optionally at one-space indent.
-fn spaced_json<T: Serialize>(value: &T, indent: bool) -> Result<String, serde_json::Error> {
+pub fn spaced_json<T: Serialize>(value: &T, indent: bool) -> Result<String, serde_json::Error> {
     let compact = serde_json::to_string(value)?;
     Ok(space_separators(&compact, indent))
 }
