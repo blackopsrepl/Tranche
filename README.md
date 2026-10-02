@@ -263,17 +263,45 @@ and `dupes` call the model.
 `judge` and `dupes` need the model. `refresh` and `all` run the whole set, so
 they need both.
 
+## The MCP surface
+
+`tranche mcp` serves a read-only, model-free MCP server over stdio — the standard
+transport, so any MCP client can spawn it:
+
+```json
+{"tranche": {"command": "tranche", "args": ["mcp", "--root", "/path/to/checkout"]}}
+```
+
+This is **not a second implementation**. The MCP surface and the CLI commands read
+the same bound report through the same validation gates, in the same binary. An
+agent asking over MCP and a person asking `tranche info` cannot be told different
+stories by one checkout, and the two can never drift apart in a release, because
+there is only one thing to release.
+
+Six tools:
+
+| Tool | Answers |
+|---|---|
+| `surface` | coverage, queues, category counts, batch overview |
+| `query` | security-first PR search with exact filters and pagination |
+| `pick` | one batch's PRs with the unchanged reviewer prompt |
+| `next_prompt` | the next batch in report order |
+| `related` | one PR's dupe evidence: groups, pairs, conflicts, missing comparisons |
+| `digests` | the report binding and output checksums a reader quotes |
+
+Every answer carries the report's binding and a disclaimer. Model suggestions are
+not merge approval; digests prove integrity, not authenticity. Responses are
+capped at 1 MiB, pagination at 100, and unknown tools are refused with `-32602`.
+The server re-reads and re-validates the report on every call and fingerprints the
+input files before and after a read, so a report changing mid-request is refused
+rather than half-served.
+
 **A command printed "this operation is not implemented yet". Why?**
-Every command is wired except `evidence …`, whose capture, inspection and export
-verbs still refuse. The commands that exist and the state of each are in
-[docs/NATIVE_CLI.md](docs/NATIVE_CLI.md).
+No command does anymore; every verb runs.
 
 **Can an agent query the reports?**
-Yes, through the MCP server: `surface`, `query`, `pick`, `next_prompt`, `related`
-and `digests` answer questions about the report over stdio, read-only. It is
-being ported to a `tranche-mcp` binary; `mcp_server.py` is still in the tree as
-the reference that port is verified against. The read projection the workbench
-and the server share is the same port.
+Yes, through `tranche mcp` — see [The MCP surface](#the-mcp-surface) above. It is
+read-only and model-free, and it serves the same bound report the CLI serves.
 
 **What does a refresh cost?**
 Nothing when nothing changed. Rough numbers for this backlog: a full re-judge is

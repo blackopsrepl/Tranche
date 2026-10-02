@@ -64,23 +64,19 @@ sorted). Both are load-bearing, and the crate documents them as such.
 
 ## Not wired yet
 
-Dispatch exists for `cluster`, `batches` and `info`. `fetch`, `judge`, `dupes`,
-`refresh`, `all`, `page` and the `evidence` verbs refuse until their transports
-land. Jev is a plain HTTPS POST, so `judge` and `dupes` need an HTTP client and
-nothing else.
+Nothing: every command runs. `tranche mcp` serves the read-only MCP surface over
+the same bound report the CLI serves — same gates, same digests, one source of
+truth. It is a front-end for AI agents, not a separate implementation; the two
+surfaces cannot disagree because they are one program reading one report through
+one loader.
 
-Two pieces of the codebase are still to be ported, and `mcp_server.py` and
-`tests/test_mcp_server.py` are kept as the reference they will be verified
-against rather than deleted:
+The MCP surface exposes six tools: `surface`, `query`, `pick`, `next_prompt`,
+`related` and `digests`. It is read-only and model-free, and every answer carries
+the report's binding and a disclaimer: model suggestions are not merge approval,
+and digests prove integrity, not authenticity. Point a client at it:
 
-1. **The read projection.** The workbench and the MCP server each reconstruct
-   the report today. One `view` module should serve both, so the two surfaces
-   cannot disagree.
-2. **`tranche-mcp`.** A second binary, not a subcommand: clients spawn one
-   process and speak JSON-RPC over stdio. The six tools are `surface`, `query`,
-   `pick`, `next_prompt`, `related` and `digests`. Its exit criterion is that a
-   real MCP client completes `initialize` → `tools/list` → `tools/call`, with the
-   1 MiB response cap, 25/100 pagination and error `-32602` for unknown tools
-   preserved.
+```json
+{"tranche": {"command": "tranche", "args": ["mcp", "--root", "/path/to/checkout"]}}
+```
 
 The masthead GIF generator was not ported; the GIF stays as a committed asset.
