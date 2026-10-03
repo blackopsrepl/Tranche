@@ -72,6 +72,10 @@ struct Stubs {
 }
 
 fn stubs() -> Stubs {
+    failing_stubs("")
+}
+
+fn failing_stubs(fail: &'static str) -> Stubs {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
     let port = listener.local_addr().expect("address").port();
     let asked = Arc::new(AtomicU32::new(0));
@@ -103,6 +107,15 @@ fn stubs() -> Stubs {
                     "1".repeat(40),
                     "2".repeat(40),
                 )
+            };
+            let invalid = (fail == "judge"
+                && body.contains("\"category\"")
+                && judged_counter.load(Ordering::SeqCst) == 1)
+                || (fail == "dupes" && body.contains("\"sameness\""));
+            let reply = if invalid {
+                r#"{"answers":{}}"#.to_owned()
+            } else {
+                reply
             };
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}",
@@ -314,6 +327,63 @@ fn a_second_refresh_judges_nothing_new() {
         2,
         "a second refresh re-judges nothing"
     );
+}
+
+#[test]
+fn composites_stop_after_a_partial_judgment_failure() {
+    for arguments in [&["refresh", "--no-page"][..], &["all"][..]] {
+        let root = root_with_corpus();
+        let stub = failing_stubs("judge");
+        let output = run(root.path(), &stub, arguments);
+        assert!(
+            !output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("stopped at judge") && stderr.contains("1 failed"),
+            "{stderr}"
+        );
+        assert_eq!(stub.compared.load(Ordering::SeqCst), 0);
+        assert!(
+            snapshot_of(root.path()).is_none(),
+            "no downstream publication"
+        );
+        assert!(!String::from_utf8_lossy(&output.stdout).contains("refresh complete"));
+    }
+}
+
+#[test]
+fn composites_stop_after_an_invalid_pair_answer_preserving_publication() {
+    for arguments in [&["refresh", "--no-page"][..], &["all"][..]] {
+        let root = root_with_corpus();
+        let good = stubs();
+        assert!(
+            run(root.path(), &good, &["refresh", "--no-page"])
+                .status
+                .success()
+        );
+        let prior = snapshot_of(root.path());
+        fs::remove_file(root.path().join("out/pair_verdicts.jsonl")).unwrap();
+        let stub = failing_stubs("dupes");
+        let output = run(root.path(), &stub, arguments);
+        assert!(
+            !output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stdout)
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            stderr.contains("stopped at dupes") && stderr.contains("1 failed"),
+            "{stderr}"
+        );
+        assert_eq!(
+            snapshot_of(root.path()),
+            prior,
+            "previous publication retained"
+        );
+    }
 }
 
 #[test]

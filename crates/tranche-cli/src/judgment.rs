@@ -7,7 +7,6 @@
 //! is what stops a question-policy change from silently reusing stale answers.
 
 use std::collections::HashMap;
-use std::io::Write;
 use std::sync::Mutex;
 
 use serde_json::Value;
@@ -48,12 +47,21 @@ pub fn judge(
     let questions = contract.judge_questions().clone();
     let corpus: Prs = load_prs(root, &repository).map_err(|error| error.0)?;
     if corpus.is_empty() {
+        if root.snapshot_path().exists() {
+            report("captured backlog is empty; no judgments needed");
+            return Ok((0, 0));
+        }
         return Err(format!(
             "no captured PR membership under {}; fetch first",
             root.pages_dir().display()
         ));
     }
 
+    if resume {
+        crate::checkpoint::recover(&root.judgments_path())?;
+    } else {
+        crate::checkpoint::repair(&root.judgments_path())?;
+    }
     // Reusable means current, complete and bound: a record that is merely present
     // is not enough, or a question change would go unnoticed.
     let already: HashMap<u64, Judgment> = if resume {
@@ -86,15 +94,7 @@ pub fn judge(
         return Ok((0, 0));
     }
 
-    let path = root.judgments_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
-    }
-    if !resume {
-        // A fresh pass starts the log over. Resume appends to what is there.
-        std::fs::write(&path, "").map_err(|error| format!("cannot reset the log: {error}"))?;
-    }
+    let checkpoint = crate::checkpoint::Checkpoint::new(&root.judgments_path(), !resume)?;
 
     let jobs: Vec<Job> = todo
         .iter()
@@ -109,33 +109,16 @@ pub fn judge(
         })
         .collect();
 
-    let outcomes = ask_all(&jobs, &questions, &model);
-
-    // Append in a deterministic order. The log's order is not digested, but an
-    // unordered append makes a resumed pass hard to read back.
+    let outcomes = ask_all(&jobs, &questions, &model, &checkpoint);
     let mut errors = Vec::new();
     let mut written = 0usize;
-    let mut stream = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|error| format!("cannot open the log: {error}"))?;
     for (job, outcome) in jobs.iter().zip(outcomes) {
         match outcome {
-            Ok(answer) => {
-                let record = normalize_judgment(&record_for(job, &answer, &model), &questions);
-                let line = serde_json::to_string(&record)
-                    .map_err(|error| format!("cannot encode a judgment: {error}"))?;
-                writeln!(stream, "{line}")
-                    .map_err(|error| format!("cannot append to the log: {error}"))?;
-                written += 1;
-            }
+            Ok(_) => written += 1,
             Err(error) => errors.push(format!("#{}: {error}", job.number)),
         }
     }
-    stream
-        .flush()
-        .map_err(|error| format!("cannot flush the log: {error}"))?;
+    checkpoint.finish(errors.is_empty())?;
 
     report(&format!(
         "done: {written} judgments appended; errors: {}",
@@ -175,7 +158,12 @@ fn record_for(job: &Job, answer: &Value, model: &str) -> Value {
 /// Each job's outcome is kept, so one failure does not lose the others. A
 /// rejected key is fatal: it cannot succeed for any of the remaining jobs, so the
 /// pass stops rather than spending five hundred failed requests.
-fn ask_all(jobs: &[Job], questions: &Value, model: &str) -> Vec<Result<Value, String>> {
+fn ask_all(
+    jobs: &[Job],
+    questions: &Value,
+    model: &str,
+    checkpoint: &crate::checkpoint::Checkpoint,
+) -> Vec<Result<Value, String>> {
     let outcomes: Mutex<Vec<Option<Result<Value, String>>>> = Mutex::new(vec![None; jobs.len()]);
     let fatal: Mutex<Option<String>> = Mutex::new(None);
     let next = std::sync::atomic::AtomicUsize::new(0);
@@ -201,7 +189,22 @@ fn ask_all(jobs: &[Job], questions: &Value, model: &str) -> Vec<Result<Value, St
                     let Some(job) = jobs.get(index) else { return };
                     let outcome = runtime
                         .block_on(jev::ask(&job.state, questions, model))
-                        .map_err(|error| error.to_string());
+                        .map_err(|error| error.to_string())
+                        .and_then(|answer| {
+                            let record =
+                                normalize_judgment(&record_for(job, &answer, model), questions);
+                            if !record["normalization_errors"]
+                                .as_array()
+                                .is_some_and(Vec::is_empty)
+                            {
+                                return Err(format!(
+                                    "invalid model judgment: {}",
+                                    record["normalization_errors"]
+                                ));
+                            }
+                            checkpoint.append(index, &record)?;
+                            Ok(record)
+                        });
                     if let Err(message) = &outcome
                         && message.contains("401")
                     {

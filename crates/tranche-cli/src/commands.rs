@@ -78,25 +78,29 @@ pub fn run(cli: &Cli) -> Outcome {
 /// command for a corpus that is already captured.
 fn run_all(root: &Root, limit: Option<u64>, max_pairs: u64) -> Outcome {
     let mut say = |line: &str| println!("{line}");
-    if let Err(error) = crate::judgment::judge(root, true, limit, &mut say) {
+    if let Err(error) =
+        crate::checkpoint::pass_result(crate::judgment::judge(root, true, limit, &mut say))
+    {
         return Outcome::refusal(format!("all stopped at judge: {error}"), 1);
     }
-    if let Err(error) = crate::dupes::dupes(root, max_pairs, &mut say) {
+    if let Err(error) =
+        crate::checkpoint::pass_result(crate::dupes::dupes(root, max_pairs, &mut say))
+    {
         return Outcome::refusal(format!("all stopped at dupes: {error}"), 1);
     }
-    for (step, outcome) in [
-        (
-            "cluster",
-            crate::reports::cluster_report(root, false, false),
-        ),
-        ("batches", crate::reports::batches(root, false)),
-    ] {
-        if outcome.code != 0 {
-            return Outcome::refusal(
-                format!("all stopped at {step}: {}", outcome.stderr.trim()),
-                1,
-            );
-        }
+    let cluster = crate::reports::cluster_report(root, false, false);
+    if cluster.code != 0 {
+        return Outcome::refusal(
+            format!("all stopped at cluster: {}", cluster.stderr.trim()),
+            1,
+        );
+    }
+    let batches = crate::reports::batches(root, false);
+    if batches.code != 0 {
+        return Outcome::refusal(
+            format!("all stopped at batches: {}", batches.stderr.trim()),
+            1,
+        );
     }
     Outcome::success(String::new())
 }

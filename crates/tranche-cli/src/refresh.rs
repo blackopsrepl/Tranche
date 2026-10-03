@@ -63,8 +63,12 @@ pub fn refresh(
             "fetch" => {
                 crate::pipeline::fetch(root, tranche_core::gh::Transport::Gh, &mut say).map(|_| ())
             }
-            "judge" => crate::judgment::judge(root, true, None, &mut say).map(|_| ()),
-            "dupes" => crate::dupes::dupes(root, max_pairs, &mut say).map(|_| ()),
+            "judge" => {
+                crate::checkpoint::pass_result(crate::judgment::judge(root, true, None, &mut say))
+            }
+            "dupes" => {
+                crate::checkpoint::pass_result(crate::dupes::dupes(root, max_pairs, &mut say))
+            }
             "cluster" => outcome_of(cluster_report(root, false, false)),
             "batches" => outcome_of(build_batches(root, false)),
             "page" => outcome_of(crate::workbench::page(root, false, false, &mut say)),

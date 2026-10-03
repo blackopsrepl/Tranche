@@ -5,7 +5,6 @@
 //! appends what comes back. The log is append-only, so a re-run never rewrites an
 //! earlier verdict.
 
-use std::io::Write;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -54,6 +53,7 @@ pub fn dupes(
         .cloned()
         .unwrap_or(Value::Null);
     let corpus: Prs = load_prs(root, &repository).map_err(|error| error.0)?;
+    crate::checkpoint::recover(&root.pairs_path())?;
     let judgments = crate::pairing::judgments(root, &corpus)?;
 
     let missing = corpus.len().saturating_sub(judgments.len());
@@ -93,29 +93,14 @@ pub fn dupes(
         })
         .collect();
 
-    let outcomes = ask_all(&jobs, &questions, &model);
-
+    let checkpoint = crate::checkpoint::Checkpoint::new(&root.pairs_path(), false)?;
+    let outcomes = ask_all(&jobs, &questions, &model, &criteria, &checkpoint);
     let mut errors = Vec::new();
     let mut written = 0usize;
     let mut tokens = (0i64, 0i64);
-    let path = root.pairs_path();
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| format!("cannot create {}: {error}", parent.display()))?;
-    }
-    let mut stream = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|error| format!("cannot open the verdict log: {error}"))?;
     for (job, outcome) in jobs.iter().zip(outcomes) {
         match outcome {
-            Ok(answer) => {
-                let record = normalize_pair(&record_for(job, &answer, &model), &criteria);
-                let line = serde_json::to_string(&record)
-                    .map_err(|error| format!("cannot encode a verdict: {error}"))?;
-                writeln!(stream, "{line}")
-                    .map_err(|error| format!("cannot append to the verdict log: {error}"))?;
+            Ok(record) => {
                 let (input, output) = token_usage(&record);
                 tokens.0 += input;
                 tokens.1 += output;
@@ -124,9 +109,7 @@ pub fn dupes(
             Err(error) => errors.push(format!("#{} ↔ #{}: {error}", job.a, job.b)),
         }
     }
-    stream
-        .flush()
-        .map_err(|error| format!("cannot flush the verdict log: {error}"))?;
+    checkpoint.finish(errors.is_empty())?;
 
     report("candidate pair comparison complete");
     report(&format!("tokens: in={} out={}", tokens.0, tokens.1));
@@ -207,7 +190,13 @@ fn record_for(job: &Job, answer: &Value, model: &str) -> Value {
 /// Each job's outcome is kept, so one failure does not lose the others. A
 /// rejected key stops the pass rather than spending it on requests that cannot
 /// succeed.
-fn ask_all(jobs: &[Job], questions: &Value, model: &str) -> Vec<Result<Value, String>> {
+fn ask_all(
+    jobs: &[Job],
+    questions: &Value,
+    model: &str,
+    criteria: &Value,
+    checkpoint: &crate::checkpoint::Checkpoint,
+) -> Vec<Result<Value, String>> {
     let outcomes: Mutex<Vec<Option<Result<Value, String>>>> = Mutex::new(vec![None; jobs.len()]);
     let fatal: Mutex<Option<String>> = Mutex::new(None);
     let next = AtomicUsize::new(0);
@@ -233,7 +222,21 @@ fn ask_all(jobs: &[Job], questions: &Value, model: &str) -> Vec<Result<Value, St
                     let Some(job) = jobs.get(index) else { return };
                     let outcome = runtime
                         .block_on(jev::ask(&job.state, questions, model))
-                        .map_err(|error| error.to_string());
+                        .map_err(|error| error.to_string())
+                        .and_then(|answer| {
+                            let record = normalize_pair(&record_for(job, &answer, model), criteria);
+                            if !record["normalization_errors"]
+                                .as_array()
+                                .is_some_and(Vec::is_empty)
+                            {
+                                return Err(format!(
+                                    "invalid model verdict: {}",
+                                    record["normalization_errors"]
+                                ));
+                            }
+                            checkpoint.append(index, &record)?;
+                            Ok(record)
+                        });
                     if let Err(message) = &outcome
                         && message.contains("401")
                     {

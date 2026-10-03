@@ -16,6 +16,12 @@ const KEY: &str = "jev-test-key-not-real";
 
 /// A model stub that answers every request and counts them.
 fn model() -> (String, Arc<AtomicU32>) {
+    model_reply(
+        r#"{"answers":{"sameness":{"choice":"related_but_different","probabilities":{"same_change":0.2}}},"usage":{"input_tokens":100,"output_tokens":20},"model":"jev-1.2.3","request_id":"req-2"}"#,
+    )
+}
+
+fn model_reply(body: &'static str) -> (String, Arc<AtomicU32>) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
     let port = listener.local_addr().expect("address").port();
     let asked = Arc::new(AtomicU32::new(0));
@@ -25,7 +31,6 @@ fn model() -> (String, Arc<AtomicU32>) {
             let Ok(mut stream) = stream else { break };
             counter.fetch_add(1, Ordering::SeqCst);
             drain(&mut stream);
-            let body = r#"{"answers":{"sameness":{"choice":"related_but_different","probabilities":{"same_change":0.2}}},"usage":{"input_tokens":100,"output_tokens":20},"model":"jev-1.2.3","request_id":"req-2"}"#;
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
@@ -169,7 +174,9 @@ fn root_with_pair() -> tempfile::TempDir {
 
 /// A stub endpoint for the judgment setup step.
 fn judge_endpoint() -> String {
-    let (endpoint, _) = model();
+    let (endpoint, _) = model_reply(
+        r#"{"answers":{"category":{"choice":"fix"},"risk":{"score":1},"is_fix":{"noul":0.9},"dupe_signal":{"noul":0.1},"finished_form":{"score":2},"review_effort":{"score":1},"security_flag":{"noul":0.0}}}"#,
+    );
     endpoint
 }
 
@@ -192,6 +199,80 @@ fn verdicts(root: &Path) -> Vec<serde_json::Value> {
             .collect(),
         Err(_) => Vec::new(),
     }
+}
+
+#[test]
+fn a_torn_pair_tail_is_repaired_before_appending() {
+    let root = root_with_pair();
+    let path = root.path().join("out/pair_verdicts.jsonl");
+    fs::write(&path, b"{\"a\":").unwrap();
+    let (endpoint, asked) = model();
+    assert!(run(root.path(), &endpoint, &["dupes"]).status.success());
+    assert_eq!(verdicts(root.path()).len(), 1);
+    assert!(run(root.path(), &endpoint, &["dupes"]).status.success());
+    assert_eq!(asked.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn an_interrupted_pair_pass_resumes_only_unfinished_comparisons() {
+    let root = root_with_pair();
+    let path = root.path().join("data/pages/snapshot.json");
+    let mut snapshot: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    let mut third = snapshot["items"][0].clone();
+    third["number"] = serde_json::json!(33);
+    snapshot["items"].as_array_mut().unwrap().push(third);
+    snapshot["digest"] = serde_json::json!(tranche_core::util::digest(&snapshot["items"]));
+    fs::write(&path, serde_json::to_vec(&snapshot).unwrap()).unwrap();
+    assert!(
+        run(root.path(), &judge_endpoint(), &["judge", "--resume"])
+            .status
+            .success()
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let (sent, received) = std::sync::mpsc::channel();
+    let (release, wait) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut first = listener.accept().unwrap().0;
+        drain(&mut first);
+        let body = r#"{"answers":{"sameness":{"choice":"unrelated","probabilities":{"same_change":0.0}}}}"#;
+        write!(
+            first,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+        drop(first);
+        let mut second = listener.accept().unwrap().0;
+        drain(&mut second);
+        sent.send(()).unwrap();
+        let _ = wait.recv_timeout(std::time::Duration::from_secs(10));
+    });
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_tranche"))
+        .arg("--root")
+        .arg(root.path())
+        .arg("dupes")
+        .env("TYPESAFE_API_KEY", KEY)
+        .env("TRANCHE_DEV_API_URL", endpoint)
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    received
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    release.send(()).unwrap();
+    let (endpoint, asked) = model();
+    assert!(run(root.path(), &endpoint, &["dupes"]).status.success());
+    assert_eq!(
+        asked.load(Ordering::SeqCst),
+        2,
+        "the completed pair must survive"
+    );
+    assert_eq!(verdicts(root.path()).len(), 3);
 }
 
 #[test]

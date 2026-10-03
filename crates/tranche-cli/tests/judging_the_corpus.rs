@@ -21,6 +21,12 @@ struct Model {
 }
 
 fn model() -> Model {
+    model_reply(
+        r#"{"answers":{"category":{"choice":"fix-misc"},"risk":{"score":1},"is_fix":{"noul":0.9},"dupe_signal":{"noul":0.1},"finished_form":{"score":2},"review_effort":{"score":1},"security_flag":{"noul":0.0}},"usage":{"input_tokens":10,"output_tokens":5},"model":"jev-1.2.3","request_id":"req-1"}"#,
+    )
+}
+
+fn model_reply(body: &'static str) -> Model {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a free port");
     let port = listener.local_addr().expect("address").port();
     let asked = Arc::new(AtomicU32::new(0));
@@ -30,7 +36,6 @@ fn model() -> Model {
             let Ok(mut stream) = stream else { break };
             counter.fetch_add(1, Ordering::SeqCst);
             drain(&mut stream);
-            let body = r#"{"answers":{"category":{"choice":"fix-misc"},"risk":{"score":1},"is_fix":{"noul":0.9},"dupe_signal":{"noul":0.1},"finished_form":{"score":2},"review_effort":{"score":1},"security_flag":{"noul":0.0}},"usage":{"input_tokens":10,"output_tokens":5},"model":"jev-1.2.3","request_id":"req-1"}"#;
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                 body.len()
@@ -163,6 +168,162 @@ fn log(root: &Path) -> Vec<serde_json::Value> {
 
 fn binary_path() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_tranche"))
+}
+
+#[test]
+fn resume_repairs_a_truncated_tail_in_one_pass() {
+    let root = root_with_corpus();
+    let stub = model();
+    run(root.path(), &stub.endpoint, &["judge", "--limit", "1"]);
+    let path = root.path().join("out/judgments.jsonl");
+    let mut file = fs::OpenOptions::new().append(true).open(&path).unwrap();
+    file.write_all(b"{\"number\":").unwrap();
+    let output = run(root.path(), &stub.endpoint, &["judge", "--resume"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(log(root.path()).len(), 2);
+    let output = run(root.path(), &stub.endpoint, &["judge", "--resume"]);
+    assert!(output.status.success());
+    assert_eq!(
+        stub.asked.load(Ordering::SeqCst),
+        2,
+        "repair must not swallow the appended answer"
+    );
+}
+
+fn held_model() -> (
+    String,
+    std::sync::mpsc::Receiver<()>,
+    std::sync::mpsc::Sender<()>,
+) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", listener.local_addr().unwrap());
+    let (started, received) = std::sync::mpsc::channel();
+    let (release, wait) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut first = listener.accept().unwrap().0;
+        drain(&mut first);
+        let body = r#"{"answers":{"category":{"choice":"fix-misc"},"risk":{"score":1},"is_fix":{"noul":0.9},"dupe_signal":{"noul":0.1},"finished_form":{"score":2},"review_effort":{"score":1},"security_flag":{"noul":0.0}}}"#;
+        write!(
+            first,
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+        drop(first);
+        let mut second = listener.accept().unwrap().0;
+        drain(&mut second);
+        started.send(()).unwrap();
+        let _ = wait.recv_timeout(std::time::Duration::from_secs(10));
+    });
+    (endpoint, received, release)
+}
+
+#[test]
+fn interrupted_fresh_pass_keeps_prior_data_and_resumes_completed_work() {
+    let root = root_with_corpus();
+    let stub = model();
+    assert!(
+        run(root.path(), &stub.endpoint, &["judge"])
+            .status
+            .success()
+    );
+    let path = root.path().join("out/judgments.jsonl");
+    let prior = fs::read(&path).unwrap();
+    let (endpoint, started, release) = held_model();
+    let mut child = std::process::Command::new(binary_path())
+        .arg("--root")
+        .arg(root.path())
+        .arg("judge")
+        .env("TYPESAFE_API_KEY", KEY)
+        .env("TRANCHE_DEV_API_URL", endpoint)
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    started
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    release.send(()).unwrap();
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        prior,
+        "fresh work must not erase usable data before success"
+    );
+    // Remove old answers: the interrupted generation itself must have saved its completed response.
+    fs::write(&path, "").unwrap();
+    assert!(
+        run(root.path(), &stub.endpoint, &["judge", "--resume"])
+            .status
+            .success()
+    );
+    assert_eq!(
+        stub.asked.load(Ordering::SeqCst),
+        3,
+        "only the unfinished request is retried"
+    );
+    assert_eq!(log(root.path()).len(), 2);
+}
+
+#[test]
+fn malformed_fresh_answers_fail_without_replacing_usable_judgments() {
+    let root = root_with_corpus();
+    assert!(
+        run(root.path(), &model().endpoint, &["judge"])
+            .status
+            .success()
+    );
+    let path = root.path().join("out/judgments.jsonl");
+    let prior = fs::read(&path).unwrap();
+    let output = run(
+        root.path(),
+        &model_reply(r#"{"answers":{"category":{"choice":"fix-misc"}}}"#).endpoint,
+        &["judge"],
+    );
+    assert!(
+        !output.status.success(),
+        "partial normalized answers must count as failures"
+    );
+    assert!(String::from_utf8_lossy(&output.stderr).contains("2 failed"));
+    assert_eq!(fs::read(path).unwrap(), prior);
+}
+
+#[test]
+fn a_new_fresh_pass_does_not_publish_an_interrupted_generation() {
+    let root = root_with_corpus();
+    assert!(
+        run(root.path(), &model().endpoint, &["judge"])
+            .status
+            .success()
+    );
+    let path = root.path().join("out/judgments.jsonl");
+    let prior = fs::read(&path).unwrap();
+    let mut record = log(root.path())[0].clone();
+    record["request_id"] = serde_json::json!("interrupted-generation");
+    fs::write(
+        path.with_extension("jsonl.checkpoint"),
+        format!("{}\n", serde_json::json!({"index":0,"record":record})),
+    )
+    .unwrap();
+    assert!(
+        !run(
+            root.path(),
+            &model_reply(r#"{"answers":{}}"#).endpoint,
+            &["judge"]
+        )
+        .status
+        .success()
+    );
+    assert_eq!(
+        fs::read(path).unwrap(),
+        prior,
+        "a fresh retry must not promote failed earlier work"
+    );
 }
 
 #[test]
