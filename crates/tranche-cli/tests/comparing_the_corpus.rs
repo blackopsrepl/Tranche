@@ -87,7 +87,7 @@ fn root_with_pair() -> tempfile::TempDir {
 
     // The deployment the synthetic corpus runs under: the same contract shape a
     // real root carries, so the binary's contract-first path is what is tested.
-    let contract = serde_json::json!({
+    let mut contract = serde_json::json!({
         "version": 1,
         "repository": "omacom/omarchy",
         "model": "jev-latest",
@@ -130,6 +130,16 @@ fn root_with_pair() -> tempfile::TempDir {
             }
         }
     });
+    for section in ["judge", "pair"] {
+        for question in contract["policy"][section]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+        {
+            question["instructions"] =
+                serde_json::json!("Answer this question from the supplied evidence.");
+        }
+    }
     fs::write(
         root.path().join("tranche.json"),
         serde_json::to_string_pretty(&contract).expect("encode"),

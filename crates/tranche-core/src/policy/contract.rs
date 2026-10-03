@@ -37,6 +37,8 @@ impl Contract {
     /// Build the contract from an already-parsed value. Tests use this.
     pub fn from_value(value: Value, path: impl Into<PathBuf>) -> Result<Self, String> {
         let path = path.into();
+        super::validation::validate(&value)
+            .map_err(|error| format!("{}: {error}", path.display()))?;
         let field = |name: &str| -> Result<&Value, String> {
             value
                 .get(name)
@@ -49,12 +51,8 @@ impl Contract {
                 .ok_or_else(|| format!("{}: `{name}` must be a string", path.display()))
         };
         let repository = text("repository")?;
-        if !repository.contains('/') || repository.split('/').any(str::is_empty) {
-            return Err(format!(
-                "{}: `repository` must be `owner/name`, got `{repository}`",
-                path.display()
-            ));
-        }
+        super::parse_repository(&repository)
+            .map_err(|error| format!("{}: {error}", path.display()))?;
         let model = text("model")?;
         let policy = field("policy")?.clone();
         for half in ["judge", "pair"] {

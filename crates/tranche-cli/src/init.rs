@@ -118,11 +118,8 @@ fn starter(repository: &str) -> serde_json::Value {
 
 /// Write `tranche.json` for `repository`, refusing an existing contract.
 pub fn init(root: &Root, repository: &str, force: bool) -> Outcome {
-    if !repository.contains('/') || repository.split('/').any(str::is_empty) {
-        return Outcome::refusal(
-            format!("repository must be `owner/name`, got `{repository}`"),
-            1,
-        );
+    if let Err(error) = tranche_core::policy::parse_repository(repository) {
+        return Outcome::refusal(error, 1);
     }
     let path = root.path().join(Contract::FILE_NAME);
     if path.exists() && !force {

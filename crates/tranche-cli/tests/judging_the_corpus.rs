@@ -69,7 +69,7 @@ fn drain(stream: &mut TcpStream) {
 /// A minimal deployment contract for a synthetic root: just the identity and
 /// the question shape the loader and normalizer read.
 fn contract_file(root: &std::path::Path) {
-    let contract = serde_json::json!({
+    let mut contract = serde_json::json!({
         "version": 1,
         "repository": "omacom/omarchy",
         "model": "jev-latest",
@@ -96,6 +96,16 @@ fn contract_file(root: &std::path::Path) {
             }
         }
     });
+    for section in ["judge", "pair"] {
+        for question in contract["policy"][section]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+        {
+            question["instructions"] =
+                serde_json::json!("Answer this question from the supplied evidence.");
+        }
+    }
     fs::write(
         root.join("tranche.json"),
         serde_json::to_string_pretty(&contract).expect("encode"),

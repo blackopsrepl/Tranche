@@ -11,9 +11,14 @@
 //! - `policy` is a frozen contract. Judgment and pair bindings digest it;
 //!   editing a single character re-asks every question and re-bills the full
 //!   backlog. It is loaded, never generated.
-//! - `display` is free to change at any time: it renders the workbench and the
-//!   reviewer prompts, and no binding covers it.
+//! - `display` does not affect model-call bindings. Titles and labels render
+//!   freely; a `subject` edit changes persisted reviewer prompts and requires
+//!   offline batch regeneration before the report gate accepts those batches.
 
 mod contract;
+mod repository;
+mod validation;
+
+pub use repository::parse_repository;
 
 pub use contract::Contract;
