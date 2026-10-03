@@ -123,6 +123,8 @@ read the remote branch ref back to confirm it equals the local commit.
 | Release acceptance | `88b51b4` | Local-fixture isolated binary smoke in both release workflows |
 | Exclusive model-pass ownership | `1c88ba8` | OS lock covers recovery through publication; killed-writer recovery tested |
 | Escaped-writer deadlines | `988c98c` | Cancellable nonblocking readers bound cleanup independently of process groups |
+| Fresh-generation resume | `883a4a2` | Durable selected-job metadata; old answers cannot satisfy unfinished fresh requests |
+| Summary integrity | `7190373` | All stored summary values match the reconstructed projection |
 
 Verification performed:
 
@@ -138,5 +140,20 @@ Verification performed:
 These tests use local model/GitHub fixtures, not paid requests. They establish
 standalone packaging and lifecycle behavior, not a fresh live Jev or GitHub run.
 Public GitHub and Jev remain the supported integration scope; v1 answer shapes
-remain fixed. Final independent review and remote-ref readback are publication
-checks, not replaced by these local gates.
+remain fixed. Independent-review findings have regression coverage and fixes:
+
+- `crates/tranche-cli/src/checkpoint.rs`, `judgment.rs`,
+  `tests/judging_the_corpus.rs`: persist selected fresh jobs, keep prior usable
+  answers outside the fresh cache, and retry unfinished work without widening a
+  limited pass. Initialize generation metadata atomically and retain it on failure.
+- `crates/tranche-cli/tests/preserving_concurrent_model_work.rs`: refuse an
+  overlapping pass and recover synced records after a killed writer.
+- `crates/tranche-core/src/gh.rs`, `tests/reading_github.rs`: cancel reader cleanup
+  even when a descendant creates another session while retaining output pipes.
+- `crates/tranche-core/src/report/reading.rs`,
+  `crates/tranche-cli/tests/rendering_the_workbench.rs`: reject modified summary
+  counts through shared readers, including page and verified info.
+
+The standard gate, full ignored core suite and rebuilt release-binary smoke were
+rerun successfully after these fixes. Remote-ref readback remains mandatory
+when publishing; local acceptance does not establish remote branch state.
