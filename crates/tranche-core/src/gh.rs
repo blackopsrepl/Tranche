@@ -191,6 +191,15 @@ fn drain(child: &mut std::process::Child, timeout: Duration) -> Result<CapturedO
     // Backpressure bounds queued chunks as well as the retained output. Readers
     // run independently: stderr cannot block a command still producing stdout.
     let (sender, receiver) = sync_channel(8);
+    let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    #[cfg(unix)]
+    let descriptors = {
+        use std::os::fd::AsRawFd;
+        [
+            child.stdout.as_ref().unwrap().as_raw_fd(),
+            child.stderr.as_ref().unwrap().as_raw_fd(),
+        ]
+    };
     let mut readers = Vec::new();
     for (stream, mut pipe) in [
         (
@@ -203,9 +212,21 @@ fn drain(child: &mut std::process::Child, timeout: Duration) -> Result<CapturedO
         ),
     ] {
         let sender = sender.clone();
+        let cancelled = cancelled.clone();
         readers.push(std::thread::spawn(move || {
+            // Cancellation must close our readers even when a writer escapes
+            // the child's process group. Never block in read on Unix pipes.
+            #[cfg(unix)]
+            unsafe {
+                let fd = descriptors[stream];
+                let flags = libc::fcntl(fd, libc::F_GETFL);
+                if flags == -1 || libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) == -1 {
+                    let _ = sender.send((stream, Err(std::io::Error::last_os_error())));
+                    return;
+                }
+            }
             let mut buffer = [0; 8192];
-            loop {
+            while !cancelled.load(std::sync::atomic::Ordering::Relaxed) {
                 match pipe.read(&mut buffer) {
                     Ok(0) => break,
                     Ok(count) => {
@@ -214,6 +235,21 @@ fn drain(child: &mut std::process::Child, timeout: Duration) -> Result<CapturedO
                         }
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        #[cfg(unix)]
+                        unsafe {
+                            let mut descriptor = libc::pollfd {
+                                fd: descriptors[stream],
+                                events: libc::POLLIN,
+                                revents: 0,
+                            };
+                            // Wake as soon as data arrives; the short timeout
+                            // still bounds cancellation with an escaped writer.
+                            libc::poll(&mut descriptor, 1, 5);
+                        }
+                        #[cfg(not(unix))]
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
                     Err(error) => {
                         let _ = sender.send((stream, Err(error)));
                         break;
@@ -264,6 +300,7 @@ fn drain(child: &mut std::process::Child, timeout: Duration) -> Result<CapturedO
     };
     // Drop the receiver before joining: a reader blocked by backpressure must
     // wake even if we refused the output before consuming all queued chunks.
+    cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
     drop(receiver);
     #[cfg(unix)]
     unsafe {

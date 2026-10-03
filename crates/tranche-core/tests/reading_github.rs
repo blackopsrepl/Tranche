@@ -218,6 +218,26 @@ fn inherited_pipes_do_not_outlive_the_deadline() {
 }
 
 #[test]
+#[cfg(target_os = "linux")]
+fn escaped_pipe_writers_cannot_extend_reader_cleanup() {
+    let path = fake("gh", "", "", 0);
+    install_script(
+        &path.path().join("gh"),
+        "#!/bin/sh\nsetsid sleep 2 &\nprintf '[]'\nexit 0\n",
+    );
+    let started = Instant::now();
+    let error = page_with_timeout(
+        Transport::Gh,
+        URL,
+        Some(path.path()),
+        Duration::from_millis(50),
+    )
+    .expect_err("an escaped writer must not hang cleanup");
+    assert!(error.to_string().contains("timed out"), "{error}");
+    assert!(started.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
 fn curl_is_a_separate_transport_with_the_same_contract() {
     let path = fake("curl", r#"[{"number": 7}]"#, "", 0);
     let items = page_with(Transport::Curl, URL, Some(Path::new(path.path())))
