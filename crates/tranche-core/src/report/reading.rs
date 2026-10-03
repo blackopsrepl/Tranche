@@ -78,6 +78,7 @@ pub fn read_report(
             != Some(false)
         || !binding_matches
         || !digests_match
+        || crate::util::digest(&summary) != crate::util::digest(&rebuilt.summary)
     {
         return Err(refuse(
             "Reports are stale, unbound, foreign or modified; rerun cluster",

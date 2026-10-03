@@ -59,6 +59,23 @@ fn run_with(root: &Path, page_args: &[&str]) -> Output {
         .expect("the tranche binary runs")
 }
 
+#[test]
+fn modified_summary_counts_are_refused_on_page_and_verified_info() {
+    let root = root();
+    let path = root.path().join("out/summary.json");
+    let mut summary: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    summary["prs_in_corpus"] = serde_json::json!(999999);
+    fs::write(path, serde_json::to_vec(&summary).unwrap()).unwrap();
+    assert!(!run(root.path()).status.success());
+    let info = Command::new(env!("CARGO_BIN_EXE_tranche"))
+        .arg("--root")
+        .arg(root.path())
+        .args(["info", "--json"])
+        .output()
+        .unwrap();
+    assert!(!info.status.success());
+}
+
 fn payload(root: &Path) -> String {
     fs::read_to_string(root.join("docs/data/workbench.json")).expect("the payload reads")
 }
