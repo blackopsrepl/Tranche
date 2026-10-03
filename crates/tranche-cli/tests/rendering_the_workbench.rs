@@ -83,6 +83,30 @@ fn a_fixture_title() -> String {
 }
 
 #[test]
+fn a_subject_edit_requires_batch_regeneration_on_every_surface() {
+    let root = root();
+    let path = root.path().join("tranche.json");
+    let mut contract: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    contract["display"]["subject"] = serde_json::json!("Another subject");
+    fs::write(path, serde_json::to_string(&contract).unwrap()).unwrap();
+    let output = run(root.path());
+    assert!(!output.status.success(), "page must reject stale prompts");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("batches.json"));
+}
+
+#[test]
+fn modified_batch_prompts_cannot_be_exported() {
+    let root = root();
+    let path = root.path().join("out/batches.json");
+    let mut batches: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+    batches["batches"][0]["review_prompt"] = serde_json::json!("Modified prompt");
+    fs::write(path, serde_json::to_string(&batches).unwrap()).unwrap();
+    assert!(!run_with(root.path(), &["--export-json"]).status.success());
+}
+
+#[test]
 fn a_page_renders_from_consistent_inputs() {
     let root = root();
     let output = run(root.path());
@@ -346,14 +370,54 @@ fn a_stale_batches_file_stops_the_render() {
 }
 
 #[test]
-fn a_missing_template_refuses_rather_than_writing_a_broken_page() {
+fn standalone_exports_do_not_read_html_overrides() {
     let root = root();
-    fs::remove_file(root.path().join("page/template.html")).expect("remove the template");
-    let output = run(root.path());
-    assert!(!output.status.success());
+    fs::remove_file(root.path().join("page/template.html")).unwrap();
+    fs::create_dir(root.path().join("page/template.html")).unwrap();
+    let output = run_with(
+        root.path(),
+        &["--no-html", "--export-json", "--export-xlsx"],
+    );
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("template"),
+        output.status.success(),
         "{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    assert!(root.path().join("docs/data/report.json").is_file());
+    assert!(root.path().join("docs/data/report.xlsx").is_file());
+    assert!(!root.path().join("docs/index.html").exists());
+    assert!(!root.path().join("docs/assets").exists());
+}
+
+#[test]
+fn embedded_resources_render_and_export_without_a_source_checkout() {
+    let root = root();
+    fs::remove_dir_all(root.path().join("page")).expect("remove local templates");
+    let output = run_with(root.path(), &["--export-json", "--export-xlsx"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let html = fs::read_to_string(root.path().join("docs/index.html")).unwrap();
+    assert!(
+        !html.contains("assets/omarchy"),
+        "generic defaults must not carry demo wordmarks"
+    );
+    for asset in [
+        "workbench.css",
+        "workbench.js",
+        "tranche-title.png",
+        "tranche.gif",
+        "tranche-mascot.png",
+    ] {
+        assert!(
+            root.path().join("docs/assets").join(asset).is_file(),
+            "missing {asset}"
+        );
+    }
+    let data: serde_json::Value = serde_json::from_str(&payload(root.path())).unwrap();
+    assert_eq!(data["repository"], "omacom/omarchy");
+    assert!(root.path().join("docs/data/report.json").is_file());
+    assert!(root.path().join("docs/data/report.xlsx").is_file());
 }

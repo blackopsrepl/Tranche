@@ -125,13 +125,18 @@ pub struct Cluster {
 }
 
 #[derive(Debug, Args)]
+#[command(group(clap::ArgGroup::new("exports").args(["export_json", "export_xlsx"]).multiple(true)))]
 pub struct Page {
+    /// Write only standalone exports, without rendering HTML or installing assets.
+    #[arg(long, requires = "exports")]
+    pub no_html: bool,
+
     /// Also write the standalone JSON report to docs/data/report.json.
-    #[arg(long)]
+    #[arg(long, group = "exports")]
     pub export_json: bool,
 
     /// Also write the filterable Excel workbook to docs/data/report.xlsx.
-    #[arg(long)]
+    #[arg(long, group = "exports")]
     pub export_xlsx: bool,
 }
 

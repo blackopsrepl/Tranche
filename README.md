@@ -168,20 +168,22 @@ repository, model alias or question wording changes cache bindings. Edit before
 judging whenever possible; later changes can require another paid model pass.
 Display labels and titles do not enter model-call cache keys.
 
-Page rendering currently requires deployment-local resources beyond the
-contract. Copy the template and browser assets from this checkout before
-rendering:
+The binary embeds the default workbench template and browser assets. Rendering
+installs missing assets under the deployment's `docs/assets/`; you do not need
+the source checkout. A local `page/template.html` or existing asset file is an
+explicit override and is not overwritten.
 
 ```bash
-mkdir -p ../my-triage/page ../my-triage/docs/assets
-cp page/template.html ../my-triage/page/
-cp -R docs/assets/. ../my-triage/docs/assets/
 tranche --root ../my-triage page
+tranche --root ../my-triage page --no-html --export-json --export-xlsx
 ```
 
-The assets include Tranche branding and demo screenshots; they are not the
-repository's review policy. `init` currently writes only `tranche.json`, so a
-new deployment cannot render a page from the installed binary alone.
+`--no-html` writes standalone exports without reading a template or installing
+browser assets. It requires at least one export format.
+
+Changing `display.subject` changes persisted reviewer prompts. Run `batches`
+after that edit before reading the report through page, info or MCP; this is an
+offline regeneration and does not require new model judgments.
 
 ## Checking a report before you trust it
 

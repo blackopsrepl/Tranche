@@ -6,7 +6,6 @@
 use tranche_core::report::Root;
 
 use crate::cli::{Cli, Command, Evidence};
-use crate::report_files::read_json;
 use crate::reports::{batches as build_batches, cluster_report};
 
 /// What the operator sees, and the status the process exits with.
@@ -59,6 +58,12 @@ pub fn run(cli: &Cli) -> Outcome {
             &mut |line: &str| println!("{line}"),
         ),
         Command::All(args) => run_all(&root, args.limit, args.max_pairs),
+        Command::Page(args) if args.no_html => crate::workbench::export_only(
+            &root,
+            args.export_json,
+            args.export_xlsx,
+            &mut |line: &str| println!("{line}"),
+        ),
         Command::Page(args) => crate::workbench::page(
             &root,
             args.export_json,
@@ -160,9 +165,9 @@ fn run_fetch(root: &Root, transport: crate::cli::Transport) -> Outcome {
 /// Read from the summary on disk rather than recomputed, so this reports what
 /// was published.
 fn print_info(root: &Root, json: bool) -> Outcome {
-    let summary = match read_json(&root.summary_path()) {
-        Ok(summary) => summary,
-        Err(error) => return Outcome::refusal(format!("summary.json: {error}"), 1),
+    let summary = match tranche_core::report::load(root, &tranche_core::report::Limits::default()) {
+        Ok(bound) => bound.summary,
+        Err(error) => return Outcome::refusal(format!("report: {error}"), 1),
     };
     if json {
         return Outcome::success(format!(

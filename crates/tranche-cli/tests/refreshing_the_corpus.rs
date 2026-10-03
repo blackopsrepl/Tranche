@@ -387,6 +387,98 @@ fn composites_stop_after_an_invalid_pair_answer_preserving_publication() {
 }
 
 #[test]
+fn info_refuses_stale_or_foreign_reports_instead_of_printing_cached_counts() {
+    for foreign in [false, true] {
+        let root = root_with_corpus();
+        let stub = stubs();
+        assert!(
+            run(root.path(), &stub, &["refresh", "--no-page"])
+                .status
+                .success()
+        );
+        assert!(
+            run(root.path(), &stub, &["--json", "info"])
+                .status
+                .success()
+        );
+        let path = root.path().join("tranche.json");
+        let mut contract: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        if foreign {
+            contract["repository"] = serde_json::json!("elsewhere/project");
+        } else {
+            contract["policy"]["judge"]["category"]["instructions"] =
+                serde_json::json!("A different question.");
+        }
+        fs::write(path, serde_json::to_vec(&contract).unwrap()).unwrap();
+        let output = run(root.path(), &stub, &["--json", "info"]);
+        assert!(
+            !output.status.success(),
+            "info must share the bound report gate"
+        );
+        assert!(output.stdout.is_empty());
+    }
+}
+
+#[test]
+fn no_html_dispatch_exports_without_rendering_a_page() {
+    let root = root_with_corpus();
+    let stub = stubs();
+    assert!(
+        run(root.path(), &stub, &["refresh", "--no-page"])
+            .status
+            .success()
+    );
+    let output = run(root.path(), &stub, &["page", "--export-json", "--no-html"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !root.path().join("docs/index.html").exists(),
+        "export only must not render HTML"
+    );
+    assert!(root.path().join("docs/data/report.json").exists());
+}
+
+#[test]
+fn initialized_second_repository_completes_without_checkout_resources() {
+    let root = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_tranche"))
+        .args(["init", "sample/widgets", "--root"])
+        .arg(root.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let path = root.path().join("tranche.json");
+    let mut contract: serde_json::Value =
+        serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    contract["policy"]["judge"]["category"]["criteria"] =
+        serde_json::json!({"fix-misc":"Repairs a bug", "unclear":"Insufficient evidence"});
+    fs::write(path, serde_json::to_vec(&contract).unwrap()).unwrap();
+    let stub = stubs();
+    let output = run(root.path(), &stub, &["refresh"]);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let payload: serde_json::Value =
+        serde_json::from_slice(&fs::read(root.path().join("docs/data/workbench.json")).unwrap())
+            .unwrap();
+    assert_eq!(payload["repository"], "sample/widgets");
+    assert_eq!(payload["prs"].as_array().unwrap().len(), 2);
+    assert!(root.path().join("docs/assets/workbench.js").is_file());
+    assert!(!root.path().join("page/template.html").exists());
+    let judged = stub.judged.load(Ordering::SeqCst);
+    let compared = stub.compared.load(Ordering::SeqCst);
+    assert!(run(root.path(), &stub, &["refresh"]).status.success());
+    assert_eq!(stub.judged.load(Ordering::SeqCst), judged);
+    assert_eq!(stub.compared.load(Ordering::SeqCst), compared);
+}
+
+#[test]
 fn the_binary_is_the_one_under_test() {
     assert!(PathBuf::from(env!("CARGO_BIN_EXE_tranche")).exists());
 }

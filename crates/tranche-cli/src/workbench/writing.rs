@@ -19,8 +19,8 @@ pub(super) fn write(
     payload: &Value,
     contract: &Contract,
 ) -> Result<(usize, usize), String> {
-    let template = std::fs::read_to_string(root.template_path())
-        .map_err(|error| format!("cannot read {}: {error}", root.template_path().display()))?;
+    let template = super::resources::template(root)?;
+    super::resources::install(root)?;
     let defaults = [(
         "security-review",
         contract.display_str("security_label", "Security (meta)"),

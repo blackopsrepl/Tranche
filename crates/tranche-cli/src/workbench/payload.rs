@@ -105,6 +105,7 @@ pub(super) fn payload(
         .collect();
 
     json!({
+        "repository": contract.repository(),
         "prs": rows,
         "categories": Value::Object(labels),
         "groups": dupes,
