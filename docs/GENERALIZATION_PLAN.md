@@ -121,6 +121,8 @@ read the remote branch ref back to confirm it equals the local commit.
 | Standalone workbench and gates | `3959039` | Embedded resources, template-free exports, shared page/info gates |
 | Empty observations | `971cafb` | Bound zero-count reports replace stale backlog reports |
 | Release acceptance | `88b51b4` | Local-fixture isolated binary smoke in both release workflows |
+| Exclusive model-pass ownership | `1c88ba8` | OS lock covers recovery through publication; killed-writer recovery tested |
+| Escaped-writer deadlines | `988c98c` | Cancellable nonblocking readers bound cleanup independently of process groups |
 
 Verification performed:
 
