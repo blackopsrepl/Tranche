@@ -63,9 +63,43 @@ pub fn judge(
     } else {
         pass.repair()?;
     }
-    // Reusable means current, complete and bound: a record that is merely present
-    // is not enough, or a question change would go unnoticed.
-    let already: HashMap<u64, Judgment> = if resume {
+    let generation = if resume {
+        pass.fresh_generation()?
+    } else {
+        None
+    };
+    // A resumed fresh pass may reuse only answers produced by that generation.
+    let already: HashMap<u64, Judgment> = if let Some(generation) = &generation {
+        let mut completed = HashMap::new();
+        for record in &generation.records {
+            let Some(number) = record["number"].as_u64() else {
+                continue;
+            };
+            let Some(pr) = corpus.get(number) else {
+                continue;
+            };
+            let judgment = Judgment {
+                number,
+                record: normalize_judgment(record, &questions),
+            };
+            if judgment.record["binding"].as_str()
+                == Some(&judgment_binding(pr, &repository, &model, &questions))
+                && reusable_judgment(&judgment)
+            {
+                completed.insert(number, judgment);
+            } else {
+                completed.remove(&number);
+            }
+        }
+        if generation
+            .selected
+            .iter()
+            .any(|number| corpus.get(*number).is_none())
+        {
+            return Err("fresh generation membership changed; start a new judge pass".to_owned());
+        }
+        completed
+    } else if resume {
         current_judgments(root, &corpus, &repository, &model, &questions, false)?
             .into_iter()
             .filter(|(_, judgment)| reusable_judgment(judgment))
@@ -79,8 +113,14 @@ pub fn judge(
     ordered.sort_by_key(|pr| std::cmp::Reverse(pr.number));
     let mut todo: Vec<&Pr> = ordered
         .into_iter()
+        .filter(|pr| {
+            generation
+                .as_ref()
+                .is_none_or(|generation| generation.selected.contains(&pr.number))
+        })
         .filter(|pr| !already.contains_key(&pr.number))
         .collect();
+    let outstanding = todo.len();
     if let Some(limit) = limit {
         todo.truncate(limit as usize);
     }
@@ -92,10 +132,24 @@ pub fn judge(
         todo.len()
     ));
     if todo.is_empty() {
+        if generation.is_some() {
+            if outstanding > 0 {
+                return Err(format!(
+                    "{outstanding} fresh-generation jobs remain; run judge --resume"
+                ));
+            }
+            pass.resume_fresh()?.finish(true)?;
+        }
         return Ok((0, 0));
     }
 
-    let checkpoint = pass.checkpoint(!resume)?;
+    let checkpoint = if generation.is_some() {
+        pass.resume_fresh()?
+    } else if resume {
+        pass.checkpoint(false)?
+    } else {
+        pass.fresh_checkpoint(&todo.iter().map(|pr| pr.number).collect::<Vec<_>>())?
+    };
 
     let jobs: Vec<Job> = todo
         .iter()
@@ -119,7 +173,17 @@ pub fn judge(
             Err(error) => errors.push(format!("#{}: {error}", job.number)),
         }
     }
-    checkpoint.finish(errors.is_empty())?;
+    let deferred = if generation.is_some() {
+        outstanding - jobs.len()
+    } else {
+        0
+    };
+    checkpoint.finish(errors.is_empty() && deferred == 0)?;
+    if deferred > 0 {
+        return Err(format!(
+            "{deferred} fresh-generation jobs remain; run judge --resume"
+        ));
+    }
 
     report(&format!(
         "done: {written} judgments appended; errors: {}",

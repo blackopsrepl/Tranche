@@ -255,8 +255,7 @@ fn interrupted_fresh_pass_keeps_prior_data_and_resumes_completed_work() {
         prior,
         "fresh work must not erase usable data before success"
     );
-    // Remove old answers: the interrupted generation itself must have saved its completed response.
-    fs::write(&path, "").unwrap();
+    // Prior answers remain usable but cannot satisfy this fresh generation's unfinished jobs.
     assert!(
         run(root.path(), &stub.endpoint, &["judge", "--resume"])
             .status
@@ -291,6 +290,47 @@ fn malformed_fresh_answers_fail_without_replacing_usable_judgments() {
     );
     assert!(String::from_utf8_lossy(&output.stderr).contains("2 failed"));
     assert_eq!(fs::read(path).unwrap(), prior);
+}
+
+#[test]
+fn resuming_a_failed_limited_fresh_pass_retries_only_selected_jobs() {
+    let root = root_with_corpus();
+    assert!(
+        run(root.path(), &model().endpoint, &["judge"])
+            .status
+            .success()
+    );
+    let path = root.path().join("out/judgments.jsonl");
+    let prior = fs::read(&path).unwrap();
+    let invalid = model_reply(r#"{"answers":{}}"#);
+    assert!(
+        !run(root.path(), &invalid.endpoint, &["judge", "--limit", "1"])
+            .status
+            .success()
+    );
+    assert_eq!(fs::read(&path).unwrap(), prior);
+    assert!(
+        !run(root.path(), &invalid.endpoint, &["judge", "--resume"])
+            .status
+            .success()
+    );
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        prior,
+        "failed resume must preserve the usable generation"
+    );
+    let retry = model();
+    assert!(
+        run(root.path(), &retry.endpoint, &["judge", "--resume"])
+            .status
+            .success()
+    );
+    assert_eq!(
+        retry.asked.load(Ordering::SeqCst),
+        1,
+        "old answers cannot satisfy fresh work; unselected jobs cannot widen it"
+    );
+    assert_eq!(log(root.path()).len(), 1);
 }
 
 #[test]

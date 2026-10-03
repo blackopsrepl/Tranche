@@ -65,6 +65,7 @@ pub struct Checkpoint<'a> {
     journal: std::path::PathBuf,
     stream: std::sync::Mutex<std::fs::File>,
     fresh: bool,
+    index_offset: usize,
 }
 
 /// A composite pass may publish only after every request succeeded.
@@ -85,6 +86,11 @@ pub fn pass_result(result: Result<(usize, usize), String>) -> Result<(), String>
 pub struct Pass {
     path: std::path::PathBuf,
     _lock: std::fs::File,
+}
+
+pub struct FreshGeneration {
+    pub selected: Vec<u64>,
+    pub records: Vec<serde_json::Value>,
 }
 
 impl Pass {
@@ -115,8 +121,45 @@ impl Pass {
         repair(&self.path)
     }
 
+    pub fn fresh_generation(&self) -> Result<Option<FreshGeneration>, String> {
+        let journal = self.path.with_extension("jsonl.checkpoint");
+        repair(&journal)?;
+        let text = match std::fs::read_to_string(journal) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(error.to_string()),
+        };
+        let mut lines = text.lines();
+        let Some(first) = lines.next() else {
+            return Ok(None);
+        };
+        let header: serde_json::Value =
+            serde_json::from_str(first).map_err(|error| error.to_string())?;
+        let Some(selected) = header.get("fresh_selected") else {
+            return Ok(None);
+        };
+        let selected: Vec<u64> =
+            serde_json::from_value(selected.clone()).map_err(|error| error.to_string())?;
+        let records = lines
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                let entry: serde_json::Value =
+                    serde_json::from_str(line).map_err(|error| error.to_string())?;
+                entry
+                    .get("record")
+                    .cloned()
+                    .ok_or_else(|| "checkpoint missing record".to_owned())
+            })
+            .collect::<Result<_, String>>()?;
+        Ok(Some(FreshGeneration { selected, records }))
+    }
+
     pub fn recover(&self) -> Result<(), String> {
         self.repair()?;
+        // A pending fresh generation must not mix old answers into its cache.
+        if self.fresh_generation()?.is_some() {
+            return Ok(());
+        }
         publish(
             &self.path,
             &self.path.with_extension("jsonl.checkpoint"),
@@ -125,32 +168,78 @@ impl Pass {
     }
 
     pub fn checkpoint(&self, fresh: bool) -> Result<Checkpoint<'_>, String> {
-        Checkpoint::new(self, fresh)
+        Checkpoint::new(self, fresh, false, None)
+    }
+
+    pub fn fresh_checkpoint(&self, selected: &[u64]) -> Result<Checkpoint<'_>, String> {
+        Checkpoint::new(self, true, false, Some(selected))
+    }
+
+    pub fn resume_fresh(&self) -> Result<Checkpoint<'_>, String> {
+        if self.fresh_generation()?.is_none() {
+            return Err("no fresh generation to resume".to_owned());
+        }
+        Checkpoint::new(self, true, true, None)
     }
 }
 
 impl<'a> Checkpoint<'a> {
-    fn new(pass: &'a Pass, fresh: bool) -> Result<Self, String> {
+    fn new(
+        pass: &'a Pass,
+        fresh: bool,
+        resume: bool,
+        selected: Option<&[u64]>,
+    ) -> Result<Self, String> {
         let path = &pass.path;
         let journal = path.with_extension("jsonl.checkpoint");
+        if !resume {
+            let mut replacement =
+                tempfile::NamedTempFile::new_in(path.parent().unwrap_or(Path::new(".")))
+                    .map_err(|error| error.to_string())?;
+            if let Some(selected) = selected {
+                writeln!(
+                    replacement,
+                    "{}",
+                    serde_json::json!({"fresh_selected": selected})
+                )
+                .map_err(|error| error.to_string())?;
+            }
+            replacement
+                .as_file()
+                .sync_all()
+                .map_err(|error| error.to_string())?;
+            replacement
+                .persist(&journal)
+                .map_err(|error| error.to_string())?;
+            sync_parent(path)?;
+        }
+        let index_offset = if resume {
+            std::fs::read_to_string(&journal)
+                .map_err(|error| error.to_string())?
+                .lines()
+                .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+                .filter_map(|entry| entry["index"].as_u64())
+                .max()
+                .map_or(0, |index| index as usize + 1)
+        } else {
+            0
+        };
         let stream = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
+            .append(true)
             .open(&journal)
             .map_err(|error| error.to_string())?;
-        stream.sync_all().map_err(|error| error.to_string())?;
-        sync_parent(path)?;
         Ok(Self {
             _pass: pass,
             path: path.to_owned(),
             journal,
             stream: std::sync::Mutex::new(stream),
             fresh,
+            index_offset,
         })
     }
 
     pub fn append(&self, index: usize, record: &serde_json::Value) -> Result<(), String> {
+        let index = index + self.index_offset;
         let line = serde_json::to_vec(&serde_json::json!({"index": index, "record": record}))
             .map_err(|error| error.to_string())?;
         let mut stream = self.stream.lock().map_err(|error| error.to_string())?;
@@ -180,6 +269,9 @@ fn publish(path: &Path, journal: &Path, fresh: bool) -> Result<(), String> {
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let value: serde_json::Value =
             serde_json::from_str(line).map_err(|error| error.to_string())?;
+        if value.get("fresh_selected").is_some() {
+            continue;
+        }
         let index = value["index"].as_u64().ok_or("checkpoint missing index")?;
         let record = value.get("record").ok_or("checkpoint missing record")?;
         records.push((
