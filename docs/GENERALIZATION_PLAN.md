@@ -85,7 +85,8 @@ found at `239f639`; it does not add arbitrary model providers or other forges.
 
 - New CLI workbench resource module: embed default template, CSS/JS and required
   generic images; provision resources without a source checkout.
-- `crates/tranche-cli/src/init.rs`: provision default resources safely.
+- `crates/tranche-cli/src/init.rs`: initialize the contract safely; provision
+  embedded resources at render time so init does not duplicate shipped assets.
 - `crates/tranche-cli/src/workbench/writing.rs`: support embedded defaults and
   explicit local overrides; ensure referenced assets are installed.
 - `crates/tranche-cli/src/workbench/page.rs`: allow standalone exports without
@@ -105,3 +106,35 @@ Run the full standard gate, the local full-corpus binding/reproduction/gate
 suite, and a release-binary smoke test outside the checkout. Audit the atomic
 history and working tree, push `explore/generalize-tranche` to `origin`, and
 read the remote branch ref back to confirm it equals the local commit.
+
+## Implemented delivery and verification
+
+| Unit | Commit | Delivered behavior |
+| --- | --- | --- |
+| Generic framing and file plan | `137742a` | Application/demo separation and file-level acceptance criteria |
+| Generic browser navigation | `3821f1b` | Deployment repository links, exercised in the browser |
+| Contract fingerprints | `e57a038` | Root contract participates in validated report reads |
+| Supported v1 contracts | `9dfc70b` | Strict schema and repository parsing; safe initialization |
+| Legacy repository identity | `bfa2b88` | Foreign and unidentified shards refused |
+| Bounded subprocess transport | `5fac12a` | Concurrent pipe draining and deadline cleanup |
+| Durable model passes | `5cbb205` | Synced recovery journals, fresh-generation preservation, composite failure propagation |
+| Standalone workbench and gates | `3959039` | Embedded resources, template-free exports, shared page/info gates |
+| Empty observations | `971cafb` | Bound zero-count reports replace stale backlog reports |
+| Release acceptance | `88b51b4` | Local-fixture isolated binary smoke in both release workflows |
+
+Verification performed:
+
+- `make check`: passed, including Rust tests, formatting, Clippy and browser tests.
+- `cargo test --locked -p tranche-core -- --ignored`: passed, including the
+  local full-corpus binding, byte-reproduction and negative report-gate suites.
+- `cargo build --locked --release -p tranche-cli`: passed.
+- `python3 tests/smoke_standalone.py target/release/tranche`: passed. The copied
+  binary initialized `sample/widgets` outside the checkout, completed refresh,
+  rendered embedded assets, exported JSON/XLSX, read verified info and reused
+  model results on a second refresh without further model requests.
+
+These tests use local model/GitHub fixtures, not paid requests. They establish
+standalone packaging and lifecycle behavior, not a fresh live Jev or GitHub run.
+Public GitHub and Jev remain the supported integration scope; v1 answer shapes
+remain fixed. Final independent review and remote-ref readback are publication
+checks, not replaced by these local gates.
