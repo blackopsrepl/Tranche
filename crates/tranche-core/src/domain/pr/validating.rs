@@ -4,6 +4,45 @@ use serde_json::Value;
 
 use super::error::PrError;
 
+/// Refuse missing or foreign identity in legacy shards. A snapshot provides its
+/// own repository binding; legacy records must establish theirs individually.
+/// Forks in `head` are not the reviewed repository and are ignored.
+pub(super) fn validate_repository(item: &Value, repository: &str) -> Result<(), PrError> {
+    if item.pointer("/base/repo/full_name").is_none()
+        && ["html_url", "url"]
+            .iter()
+            .all(|field| item.get(field).is_none_or(Value::is_null))
+    {
+        return Err(PrError(
+            "legacy captured PR has no repository identity; fetch again".into(),
+        ));
+    }
+    if let Some(name) = item.pointer("/base/repo/full_name")
+        && name.as_str() != Some(repository)
+    {
+        return Err(PrError(
+            "captured PR repository identity differs; fetch again".into(),
+        ));
+    }
+    for (field, prefix, segment) in [
+        ("html_url", "https://github.com/", "pull"),
+        ("url", "https://api.github.com/repos/", "pulls"),
+    ] {
+        if let Some(value) = item.get(field).filter(|v| !v.is_null()) {
+            let expected = format!("{prefix}{repository}/{segment}/");
+            if !value.as_str().is_some_and(|s| {
+                s.strip_prefix(&expected)
+                    .is_some_and(|n| n.parse::<u64>().ok() == item["number"].as_u64())
+            }) {
+                return Err(PrError(
+                    "captured PR repository identity differs; fetch again".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 /// A captured PR must carry the fields a judgment reads, or nothing may use it.
 pub fn validate_pr(item: &Value) -> Result<(), PrError> {
     let object = item

@@ -64,7 +64,13 @@ pub(crate) fn membership_pages(root: &Root, repository: &str) -> Result<Vec<Valu
     let mut pages = Vec::new();
     for path in crate::report::read_page_paths(&root.pages_dir()) {
         let text = std::fs::read_to_string(&path).map_err(invalid)?;
-        pages.push(serde_json::from_str(&text).map_err(invalid)?);
+        let page: Value = serde_json::from_str(&text).map_err(invalid)?;
+        if let Some(items) = page.as_array() {
+            for item in items {
+                super::validating::validate_repository(item, repository)?;
+            }
+        }
+        pages.push(page);
     }
     Ok(pages)
 }
