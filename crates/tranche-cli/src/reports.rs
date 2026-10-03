@@ -188,9 +188,9 @@ pub fn cluster_report(root: &Root, allow_unbound: bool, json: bool) -> Outcome {
         Err(error) => return Outcome::refusal(format!("pairs: {error}"), 1),
     };
 
-    if corpus.is_empty() {
-        // Writing here would publish an empty report over whatever is already
-        // stored, and `summary.json` is the manifest a reader trusts.
+    if corpus.is_empty() && !root.snapshot_path().exists() {
+        // A validated snapshot observes emptiness; absent legacy membership does
+        // not. Only the former may replace a previously published observation.
         return Outcome::refusal(
             format!(
                 "no captured PR membership under {}; fetch first",
