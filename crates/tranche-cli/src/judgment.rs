@@ -57,10 +57,11 @@ pub fn judge(
         ));
     }
 
+    let pass = crate::checkpoint::Pass::acquire(&root.judgments_path())?;
     if resume {
-        crate::checkpoint::recover(&root.judgments_path())?;
+        pass.recover()?;
     } else {
-        crate::checkpoint::repair(&root.judgments_path())?;
+        pass.repair()?;
     }
     // Reusable means current, complete and bound: a record that is merely present
     // is not enough, or a question change would go unnoticed.
@@ -94,7 +95,7 @@ pub fn judge(
         return Ok((0, 0));
     }
 
-    let checkpoint = crate::checkpoint::Checkpoint::new(&root.judgments_path(), !resume)?;
+    let checkpoint = pass.checkpoint(!resume)?;
 
     let jobs: Vec<Job> = todo
         .iter()

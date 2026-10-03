@@ -53,7 +53,8 @@ pub fn dupes(
         .cloned()
         .unwrap_or(Value::Null);
     let corpus: Prs = load_prs(root, &repository).map_err(|error| error.0)?;
-    crate::checkpoint::recover(&root.pairs_path())?;
+    let pass = crate::checkpoint::Pass::acquire(&root.pairs_path())?;
+    pass.recover()?;
     let judgments = crate::pairing::judgments(root, &corpus)?;
 
     let missing = corpus.len().saturating_sub(judgments.len());
@@ -93,7 +94,7 @@ pub fn dupes(
         })
         .collect();
 
-    let checkpoint = crate::checkpoint::Checkpoint::new(&root.pairs_path(), false)?;
+    let checkpoint = pass.checkpoint(false)?;
     let outcomes = ask_all(&jobs, &questions, &model, &criteria, &checkpoint);
     let mut errors = Vec::new();
     let mut written = 0usize;

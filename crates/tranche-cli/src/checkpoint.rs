@@ -2,7 +2,7 @@
 use std::io::Write;
 use std::path::Path;
 
-pub fn repair(path: &Path) -> Result<(), String> {
+fn repair(path: &Path) -> Result<(), String> {
     let bytes = match std::fs::read(path) {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -59,7 +59,8 @@ pub fn repair(path: &Path) -> Result<(), String> {
 
 /// Responses are synced as they arrive; publication is sorted by job index.
 /// A fresh generation never touches the usable log until the pass succeeds.
-pub struct Checkpoint {
+pub struct Checkpoint<'a> {
+    _pass: &'a Pass,
     path: std::path::PathBuf,
     journal: std::path::PathBuf,
     stream: std::sync::Mutex<std::fs::File>,
@@ -78,17 +79,59 @@ pub fn pass_result(result: Result<(usize, usize), String>) -> Result<(), String>
     }
 }
 
-pub fn recover(path: &Path) -> Result<(), String> {
-    repair(path)?;
-    let journal = path.with_extension("jsonl.checkpoint");
-    publish(path, &journal, false)
+/// An OS lock covers recovery, job selection, checkpointing and publication.
+/// Keep the lock inode in place: deleting it permits two independent holders.
+/// The OS releases the lock on process exit, including an interrupted pass.
+pub struct Pass {
+    path: std::path::PathBuf,
+    _lock: std::fs::File,
 }
 
-impl Checkpoint {
-    pub fn new(path: &Path, fresh: bool) -> Result<Self, String> {
+impl Pass {
+    pub fn acquire(path: &Path) -> Result<Self, String> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
+        let lock = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(path.with_extension("jsonl.lock"))
+            .map_err(|error| error.to_string())?;
+        lock.try_lock().map_err(|error| {
+            format!(
+                "cannot acquire model-pass lock for {}: {error}",
+                path.display()
+            )
+        })?;
+        Ok(Self {
+            path: path.to_owned(),
+            _lock: lock,
+        })
+    }
+
+    pub fn repair(&self) -> Result<(), String> {
+        repair(&self.path)
+    }
+
+    pub fn recover(&self) -> Result<(), String> {
+        self.repair()?;
+        publish(
+            &self.path,
+            &self.path.with_extension("jsonl.checkpoint"),
+            false,
+        )
+    }
+
+    pub fn checkpoint(&self, fresh: bool) -> Result<Checkpoint<'_>, String> {
+        Checkpoint::new(self, fresh)
+    }
+}
+
+impl<'a> Checkpoint<'a> {
+    fn new(pass: &'a Pass, fresh: bool) -> Result<Self, String> {
+        let path = &pass.path;
         let journal = path.with_extension("jsonl.checkpoint");
         let stream = std::fs::OpenOptions::new()
             .create(true)
@@ -99,6 +142,7 @@ impl Checkpoint {
         stream.sync_all().map_err(|error| error.to_string())?;
         sync_parent(path)?;
         Ok(Self {
+            _pass: pass,
             path: path.to_owned(),
             journal,
             stream: std::sync::Mutex::new(stream),
