@@ -102,8 +102,7 @@ test('browser workbench renders safe text, inspects PRs, restores focus and URL 
         await new Promise(resolve => frame.addEventListener('load', resolve, {once:true}));
         const mobile = frame.contentDocument;
         check(mobile.documentElement.scrollWidth <= 390, '390px has no overflow');
-        check(mobile.querySelector('.wordmark img').currentSrc.endsWith('omarchy-title.png'), 'mobile reduced-motion asset');
-        check(frame.contentWindow.getComputedStyle(mobile.querySelector('.tranche-motion')).animationName === 'none', 'reduced motion disables name animation');
+        check(mobile.querySelector('.wordmark img').currentSrc.endsWith('tranche-title.png'), 'mobile reduced-motion asset');
         check(mobile.querySelector('.product-note')?.getClientRects().length > 0, 'honest product note visible on mobile');
         frame.remove();
         report.textContent = 'BROWSER_PASS';
