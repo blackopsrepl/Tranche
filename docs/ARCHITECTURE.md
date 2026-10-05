@@ -16,7 +16,8 @@ crates/
     src/domain/dupe/            candidate pairs, similarity, stored verdicts
     src/domain/cluster/         grouping, predicates, the report and its binding
     src/domain/batch/           packing, park decisions, report sections
-    src/domain/questions.rs     the frozen question policy
+    src/domain/questions.rs     the shared answer schema; the questions are data
+    src/policy/                 the deployment contract: load, validate, identify
     src/evidence/               selection, coverage, manifest, lock, store
   tranche-cli/                  bin `tranche`
     src/cli.rs                  the command tree
@@ -78,7 +79,7 @@ the report's binding and a disclaimer: model suggestions are not merge approval,
 and digests prove integrity, not authenticity. Point a client at it:
 
 ```json
-{"mcpServers": {"tranche": {"command": "tranche", "args": ["--root", "/path/to/checkout", "mcp"]}}}
+{"mcpServers": {"tranche": {"command": "tranche", "args": ["--root", "/path/to/deployment", "mcp"]}}}
 ```
 
 The masthead GIF generator was not ported; the GIF stays as a committed asset.
