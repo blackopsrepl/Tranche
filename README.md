@@ -118,11 +118,11 @@ cargo install --path crates/tranche-cli --locked
 ```
 
 The binary is self-contained: no interpreter, no daemon, no database, no service
-to start. It reads a checkout containing the captured corpus and the reports
-derived from it. Run it from that checkout, or point at one from anywhere:
+to start. It reads a deployment root holding the captured corpus and the reports
+derived from it. Run it from that root, or point at one from anywhere:
 
 ```bash
-tranche --root /path/to/Tranche cluster
+tranche --root /path/to/deployment cluster
 ```
 
 `--root` defaults to the current directory. `--help` at any level shows the
@@ -382,13 +382,13 @@ publication target.
 transport, so any MCP client can spawn it:
 
 ```json
-{"mcpServers": {"tranche": {"command": "tranche", "args": ["--root", "/path/to/checkout", "mcp"]}}}
+{"mcpServers": {"tranche": {"command": "tranche", "args": ["--root", "/path/to/deployment", "mcp"]}}}
 ```
 
 This is **not a second implementation**. The MCP surface and the CLI commands read
 the same bound report through the same validation gates, in the same binary. An
 agent asking over MCP and a person asking `tranche info` cannot be told different
-stories by one checkout, and the two can never drift apart in a release, because
+stories by one deployment, and the two can never drift apart in a release, because
 there is only one thing to release.
 
 Six tools:
