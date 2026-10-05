@@ -130,10 +130,54 @@ flags that exist.
 
 ## Quick start
 
+### Create a deployment for any repository
+
+A deployment is a fresh directory bound to one repository. Keep deployments
+separate; the Omarchy demo below is one deployment, not a shared home.
+
+```bash
+mkdir my-triage && cd my-triage
+tranche init OWNER/REPO        # write the starter deployment contract
+$EDITOR tranche.json           # rewrite taxonomy and wording for THIS repository
+tranche fetch                  # capture open-PR membership (needs gh)
+tranche judge --resume         # one batched model call per unjudged PR
+tranche dupes                  # compare candidate pairs
+tranche cluster                # build clusters, dupes, tranches.md, summary
+tranche batches                # pack batches, write the park record
+tranche page                   # render the workbench
+tranche page --export-json --export-xlsx # optionally write standalone exports
+```
+
+`fetch` captures current membership; `judge` and `dupes` call the model and can
+incur charges.
+
+Replace `OWNER/REPO` with the public GitHub repository you want to review. The
+starter uses generic categories such as `fix`, `feature`, `docs` and `chore`.
+Adjust their criteria and question wording to the repository's review standards;
+keep the engine's question names, answer types and score ranges. This is a
+configurable triage workflow, not an arbitrary questionnaire engine.
+
+`init` refuses an existing contract unless you pass `--force`. Changing the
+repository, model alias or question wording changes cache bindings. Edit before
+judging whenever possible; later changes can require another paid model pass.
+Display labels and titles do not enter model-call cache keys.
+
+The binary embeds the default workbench template and browser assets. Rendering
+installs missing assets under the deployment's `docs/assets/`; you do not need
+the source checkout. A local `page/template.html` or existing asset file is an
+explicit override and is not overwritten.
+
+`--no-html` writes standalone exports without reading a template or installing
+browser assets. It requires at least one export format.
+
+Changing `display.subject` changes persisted reviewer prompts. Run `batches`
+after that edit before reading the report through page, info or MCP; this is an
+offline regeneration and does not require new model judgments.
+
 ### Run the Omarchy demo
 
-The commands below use this checkout's Omarchy contract. `fetch` captures current
-membership; `judge` and `dupes` can incur API charges. Browsing the published
+This checkout is the Omarchy deployment: its contract (`tranche.json`), captured
+corpus and published report ship with the repository. Browsing the published
 [demo report](https://vdistefano.studio/Tranche/) requires no setup.
 
 ```bash
@@ -156,49 +200,6 @@ without spending a model call.
 
 Every stage is safe to re-run. `cluster` and `batches` are pure functions of the
 stored corpus — they call no model and touch no network.
-
-### Use another repository
-
-Keep its data separate from the Omarchy demo. From the Tranche source checkout:
-
-```bash
-mkdir ../my-triage
-tranche --root ../my-triage init OWNER/REPO
-# Edit ../my-triage/tranche.json before the first model pass.
-tranche --root ../my-triage fetch
-tranche --root ../my-triage judge --resume
-tranche --root ../my-triage dupes
-tranche --root ../my-triage cluster
-tranche --root ../my-triage batches
-```
-
-Replace `OWNER/REPO` with the public GitHub repository you want to review. The
-starter uses generic categories such as `fix`, `feature`, `docs` and `chore`.
-Adjust their criteria and question wording to the repository's review standards;
-keep the engine's question names, answer types and score ranges. This is a
-configurable triage workflow, not an arbitrary questionnaire engine.
-
-`init` refuses an existing contract unless you pass `--force`. Changing the
-repository, model alias or question wording changes cache bindings. Edit before
-judging whenever possible; later changes can require another paid model pass.
-Display labels and titles do not enter model-call cache keys.
-
-The binary embeds the default workbench template and browser assets. Rendering
-installs missing assets under the deployment's `docs/assets/`; you do not need
-the source checkout. A local `page/template.html` or existing asset file is an
-explicit override and is not overwritten.
-
-```bash
-tranche --root ../my-triage page
-tranche --root ../my-triage page --no-html --export-json --export-xlsx
-```
-
-`--no-html` writes standalone exports without reading a template or installing
-browser assets. It requires at least one export format.
-
-Changing `display.subject` changes persisted reviewer prompts. Run `batches`
-after that edit before reading the report through page, info or MCP; this is an
-offline regeneration and does not require new model judgments.
 
 ## Checking a report before you trust it
 
