@@ -6,11 +6,26 @@
 repositories. It spots likely duplicates and gathers changes into reviewable
 batches. Jev supplies the judgments; humans make the merge call.
 
-Each deployment has a `tranche.json` contract that selects the repository, model
-alias, question wording, category taxonomy and display labels. The same binary
-runs each deployment. Omarchy is the included demo use case, with a captured
-corpus and published report; its review policy is an example, not a requirement
-for using Tranche.
+## The model
+
+One directory is one **deployment**: a binding of Tranche to one repository.
+The directory holds the deployment contract (`tranche.json`), the captured PR
+corpus, the stored judgments and the published reports — everything the
+deployment owns. The binary holds no state and no global configuration;
+`--root` selects the deployment and defaults to the current directory. N
+repositories under review means N deployment directories and one binary.
+
+The repository under review is read-only input, reached only through GitHub's
+API: it stores nothing, hosts nothing, and needs no cooperation from its
+maintainers. The deployment — contract and corpus together — lives on your
+side, and is normally a git repository of its own; that is also what Pages
+publishes.
+
+Each deployment's `tranche.json` selects the repository, model alias, question
+wording, category taxonomy and display labels. The same binary runs each
+deployment. Omarchy is the included demo deployment, with a captured corpus and
+published report; its review policy is an example, not a requirement for using
+Tranche.
 
 MIT licensed (see [LICENSE](LICENSE)); Tranche reads public repositories only and
 never includes credentials in its reports.
@@ -398,6 +413,12 @@ rather than half-served.
 **Does Tranche merge or close anything?**
 No. The pipeline is read-only toward GitHub. Nothing claims, reserves or approves
 work.
+
+**Where does the configuration for a repository live?**
+In the deployment directory, as `tranche.json`. The repository under review
+stores nothing: Tranche reads it through GitHub's public API only, so a
+deployment needs no cooperation from the reviewed project's maintainers. The
+contract, the corpus and the reports all live on your side, in the deployment.
 
 **What does "duplicate" mean here?**
 A Jev judgment that two PRs propose the same underlying change, with the
