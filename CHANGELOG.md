@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file. See [commit-and-tag-version](https://github.com/absolute-version/commit-and-tag-version) for commit guidelines.
 
+## [0.8.5](https://github.com/blackopsrepl/Tranche/compare/v0.8.4...v0.8.5) (2026-10-05)
+
+
+### Features
+
+* **core:** load the deployment contract from the report root ([239f639](https://github.com/blackopsrepl/Tranche/commit/239f639783dccaa6e2b05aab406f2dec23c79f03))
+* **workbench:** ship standalone resources behind shared report gates ([3959039](https://github.com/blackopsrepl/Tranche/commit/39590394bea0ac5649a58865e759dc1ec56d47f2))
+
+
+### Bug Fixes
+
+* **corpus:** reject foreign and unidentified legacy membership ([bfa2b88](https://github.com/blackopsrepl/Tranche/commit/bfa2b8861cfaf05ae5977165528784ed19b23aad))
+* **fetch:** cancel pipe readers when descendants escape ([988c98c](https://github.com/blackopsrepl/Tranche/commit/988c98ca9f29f2a7dbadf073b9410ef0f7b0e0e0))
+* **fetch:** drain bounded subprocess output before exit ([5fac12a](https://github.com/blackopsrepl/Tranche/commit/5fac12a4a4947e0e096a20f786a35863c51958a3))
+* **pipeline:** checkpoint model work and stop failed composites ([5cbb205](https://github.com/blackopsrepl/Tranche/commit/5cbb2058fd2c92a8e3b1978c666a8b06437e1a12))
+* **pipeline:** lock model passes before checkpoint recovery ([1c88ba8](https://github.com/blackopsrepl/Tranche/commit/1c88ba85c899822cd09bbbae60564f74d117d98c))
+* **pipeline:** resume the selected fresh generation ([883a4a2](https://github.com/blackopsrepl/Tranche/commit/883a4a2b47cfcbabc354968f3997bf0c1c5c9e09))
+* **policy:** validate supported deployment contracts ([9dfc70b](https://github.com/blackopsrepl/Tranche/commit/9dfc70b23acd375c524fade45019139d23d483ef))
+* **report:** fingerprint deployment contracts at the root ([e57a038](https://github.com/blackopsrepl/Tranche/commit/e57a038d50b7f579b21f3507f5f35169f14e4515))
+* **report:** publish observed empty backlogs ([971cafb](https://github.com/blackopsrepl/Tranche/commit/971cafbd00fea818f519d89efa4e2d70c3bc0b93))
+* **report:** validate reconstructed summary values ([7190373](https://github.com/blackopsrepl/Tranche/commit/7190373bc4d14553578e6f2da50a494a78fd8853))
+* **workbench:** align the browser probe with the current masthead ([7d9c244](https://github.com/blackopsrepl/Tranche/commit/7d9c244ab8532c8b37950285f6580e640f574c5c))
+* **workbench:** open pull requests in the deployment repository ([3821f1b](https://github.com/blackopsrepl/Tranche/commit/3821f1b2ba0cbc65a2c548bf9e087ea75d371dfb))
+
 ## [0.8.4](https://github.com/blackopsrepl/Tranche/compare/v0.8.3...v0.8.4) (2026-10-02)
 
 
