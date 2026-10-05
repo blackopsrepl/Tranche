@@ -25,5 +25,9 @@ skills-lock.json
 # category and are tracked on purpose.
 out/evidence/
 
+# Model-pass lock files. Same category as evidence runtime state: concurrency
+# control for this checkout's own passes, not part of the published report.
+out/*.jsonl.lock
+
 # Rust build artifacts; the lockfile is tracked for reproducible CLI builds.
 /target/
