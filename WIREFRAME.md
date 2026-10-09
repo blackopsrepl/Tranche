@@ -11,14 +11,16 @@ disagree with each other:
 | Surface | File | Audience |
 | --- | --- | --- |
 | Workbench | `docs/index.html` + `docs/data/workbench.json` | a human triaging the backlog |
-| CLI | `tranche` (Rust frontend over `tranche.py` / `evidence.py`) | an operator, and the workbench/MCP later |
-| MCP server | `mcp_server.py` | an AI agent asking bounded questions |
+| CLI | `tranche` (Rust binary; `crates/tranche-cli` over `crates/tranche-core`) | an operator, and the workbench/MCP beneath it |
+| MCP server | `tranche mcp` (the same binary, over stdio JSON-RPC) | an AI agent asking bounded questions |
 
 ## 1. Workbench
 
-Static, inert HTML. `gen_page.py` renders one shell and one data payload; the
-page fetches the payload at boot and does all filtering client-side. Nothing on
-the page acquires evidence, holds a credential or executes captured text.
+Static, inert HTML. `tranche page` renders one shell and one data payload,
+from the embedded template and assets (`crates/tranche-cli/src/workbench/`);
+the page fetches the payload at boot and does all filtering client-side.
+Nothing on the page acquires evidence, holds a credential or executes captured
+text.
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
@@ -74,7 +76,8 @@ PR detail (modal <dialog>, Esc / Close restores focus to the row)
 - **Unknowns stay unknown.** A missing diffstat, risk or judgment is displayed as
   unknown, never as zero.
 - **The payload is data, not prose.** `docs/data/workbench.json` carries
-  `prs`, `categories`, `groups`, `batches`, `batches_available` and `parked`.
+  `repository`, `prs`, `categories`, `groups`, `batches`, `batches_available`
+  and `parked`.
   Assertions about corpus numbers read the payload; assertions about behaviour
   read the live DOM. Never mix the two.
 - **Empty and failure states exist**: no matches, JavaScript disabled, payload
@@ -138,14 +141,14 @@ from. Tools today: `surface`, `query`, `pick`, `next_prompt`, `related`,
 - **Never serve historical stale cache rows** as current; the producer's
   projection is the only one published.
 - **Prompt picking stays stateless and read-only**.
-- Evidence read/retrieve tools are **not** implemented yet; when they are, they
-  must reuse this evidence service and use progressive retrieval rather than
-  inlining a packet.
+- There are no evidence read/retrieve tools; evidence is inspected through
+  `tranche evidence show`, never through the MCP surface.
 
 ## 4. Publication
 
-`make page` renders the workbench into `docs/`. Publication is the only step that
-touches the served site, and only these paths are served:
+`tranche page` (or `make page`) renders the workbench into `docs/`.
+Publication is the only step that touches the served site, and only these
+paths are served:
 
 ```
 docs/index.html            shell
